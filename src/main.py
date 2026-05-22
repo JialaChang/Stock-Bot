@@ -1,211 +1,59 @@
-import yfinance as yf
-import pandas as pd
-import pandas_ta as pta  # type: ignore
-import mplfinance as mpf
-import matplotlib
-import mplfinance as mpf
-import matplotlib.pyplot as plt
-import twstock
-import io
-import pytz
-
-if __name__ != "__main__":
-    matplotlib.use('Agg')
-
-TW_CODES = twstock.codes
+from core import StockDataFetcher, TechnicalAnalyzer, StockVisualizer
+import os
+import platform
+import subprocess
 
 
-# Stock Object
-class Stock:
+def test_local(ticker):
+    print(f"正在測試本地分析...")
+    
+    # 取得股票資料
+    fetcher = StockDataFetcher(ticker)
+    stock_name = fetcher.fetch_stock_name()
+    stock_ticker = fetcher.ticker
+    history_data = fetcher.fetch_historical_data()
+    intraday_data = fetcher.fetch_intraday_data()
+    latest_time = fetcher.fetch_latest_time()
+    
+    # 進行分析
+    snapshot = TechnicalAnalyzer.analyze(stock_ticker, stock_name, history_data, latest_time)
+    
+    # 產生並顯示圖表
+    chart_buffer = StockVisualizer.generate_chart(stock_ticker, history_data)
+    print("正在繪製圖表...")
+    
+    # 將記憶體中的圖片寫入本地實體檔案
+    chart_path = "test_chart.png"
+    with open(chart_path, "wb") as f:
+        f.write(chart_buffer.getbuffer())
+    
+    print("圖表已儲存，正在使用系統預設程式開啟...")
+    
+    # 呼叫作業系統預設的圖片檢視器來開啟檔案
+    # macOS
+    if platform.system() == 'Darwin':
+        subprocess.call(('open', chart_path))
+    # Windows
+    elif platform.system() == 'Windows':
+        os.startfile(chart_path)
+    # Linux
+    else:
+        subprocess.call(('xdg-open', chart_path))
 
-    def __init__(self, ticker):
-        """Constructor"""
-
-        self.ticker: str = ticker
-        self.name: str = self.fetch_stock_name()
-        self.data = pd.DataFrame()
-        self.latest_time = None
-        self.prices = pd.Series()
-        self.change = 0.0
-        self.rsi = pd.Series()
-        self.ma5 = pd.Series()
-        self.ma10 = pd.Series()
-        self.ma20 = pd.Series()
-
-    def fetch_stock_name(self):
-        """Get stock's name"""
-
-        # get taiwan stock name
-        try:
-            stock_code = self.ticker.split(".TW")[0]
-                
-            if stock_code in TW_CODES:
-                if not (self.ticker.endswith(".TW")):
-                    self.ticker += ".TW"
-                return TW_CODES[stock_code].name
-            
-            return self.ticker
-            
-        except:
-            return self.ticker
-        
-        # complete us stock part
-        pass
-
-    def download_data(self) -> bool:
-        """Download data and call other functions"""
-
-        try:
-
-            daily_data = yf.download(self.ticker, period="3mo", interval="1d", threads=True, auto_adjust=True)
-            intraday_data = yf.download(self.ticker, period="1d", interval="1m", progress=False)
-
-            if daily_data is None or daily_data.empty:
-                return False
-            self.get_data(daily_data)
-
-            # get latest time of data
-            if intraday_data is not None and not intraday_data.empty:
-                self.latest_time = intraday_data.index[-1].tz_convert(pytz.timezone('Asia/Taipei'))
-            else:
-                self.latest_time = daily_data.index[-1]
-
-            return True
-        
-        except:
-            return False
-
-    def get_data(self, data):
-        """Get stock data"""
-
-        # determine the dimension of data
-        if isinstance(data.columns, pd.MultiIndex):
-            tmp_data = data.xs(self.ticker, level=1, axis=1)
-        else:
-            tmp_data = data
-        # handle data
-        self.data = tmp_data.dropna(subset=['Close'])
-        if self.data.empty: return
-
-        # price
-        self.prices = self.data['Close']
-        # avoid data too short
-        if (len(self.prices) < 20) : return 
-        # price change
-        now_p = self.prices.iloc[-1]
-        prev_p = self.prices.iloc[-2]
-        self.change = (now_p - prev_p) / prev_p * 100
-        # RSI
-        self.rsi = pta.rsi(self.prices, length=14)  # type: ignore
-        # MA
-        self.ma5 = pta.sma(self.prices, length=5)   # type: ignore
-        self.ma10 = pta.sma(self.prices, length=10) # type: ignore
-        self.ma20 = pta.sma(self.prices, length=20) # type: ignore
-
-    def output_data(self):
-        """Output stock data"""
-
-        time_str = self.latest_time.strftime('%m-%d %H:%M') if self.latest_time else "N/A"
-
-        print("-" * 40)
-        print(f"╎ [{self.name}({self.ticker})]")
-        print(f"╎ {'∇' if self.change < 0 else '∆'} {abs(self.change):<8.2f}%")
-        print(f"╎ Price: {self.prices.iloc[-1]:<8.2f} RSI: {self.rsi.iloc[-1]:<6.2f}")
-        print(f"╎ data time: {time_str}")
-        print("-" * 40)
-
-    def return_data(self):
-        """Return stock data"""
-
-        return {
-            "name": self.name,
-            "price": f"{self.prices.iloc[-1]:.2f}",
-            "change": self.change,
-            "change_str": f"{'∇' if self.change < 0 else '∆'} {abs(self.change):.2f}%",
-            "latest_time": self.latest_time.strftime('%m-%d %H:%M') if self.latest_time else "N/A",
-            "rsi": f"{self.rsi.iloc[-1]:.2f}"
-        }
-
-    def _setup_plot(self, n=28):
-        """Prepare plot data for later using"""
-
-        # use n days data to draw
-        plot_data = self.data.iloc[-n:]
-        plot_ma5 = self.ma5.iloc[-n:]
-        plot_ma10 = self.ma10.iloc[-n:]
-        plot_ma20 = self.ma20.iloc[-n:]
-
-        addplot = [
-            mpf.make_addplot(plot_ma5, color="#FF9538", width=1, label='5MA'),
-            mpf.make_addplot(plot_ma10, color="#00BBFF", width=1, label='10MA'),
-            mpf.make_addplot(plot_ma20, color='#9A1EE8', width=1, label='20MA')
-        ]
-        color = mpf.make_marketcolors(
-            # price
-            up='red',
-            down='green',
-            edge='inherit',
-            wick='inherit',
-            # volume
-            volume='#87ceeb',
-        )
-        style = mpf.make_mpf_style(marketcolors=color, gridstyle='--')
-
-        return plot_data, addplot, style
-
-    def output_plot(self):
-        """Output stock plot"""
-
-        plot_data, addplot, style = self._setup_plot()
-        mpf.plot(
-            plot_data,
-            type='candle',
-            addplot=addplot,
-            style=style,
-            title=f"\n{self.ticker}",
-            show_nontrading=False,
-
-            volume=True,
-            volume_alpha=0.3,
-            panel_ratios=(3, 1),
-        )
-        
-    def return_plot(self):
-        """Return stock plot to discord bot"""
-
-        # setup memory buffer
-        buffer = io.BytesIO()
-
-        plot_data, addplot, style = self._setup_plot()
-        mpf.plot(
-            plot_data,
-            type='candle',
-            addplot=addplot,
-            style=style,
-            title=f"\n{self.ticker}",
-            show_nontrading=False,
-
-            volume=True,
-            volume_alpha=0.3,
-            panel_ratios=(3, 1),
-
-            savefig=buffer
-        )
-        
-        # point to the begining
-        buffer.seek(0)
-        plt.close('all')
-        return buffer
+    print("-" * 50)
+    print(f"股票名稱: {snapshot.name} ({snapshot.ticker})")
+    print(f"最新價格: {snapshot.current_price:.2f}")
+    print(f"當日漲跌: {snapshot.change_str}")
+    print(f"RSI 指標: {snapshot.rsi_value:.2f}")
+    print(f"資料時間: {snapshot.latest_time_str}")
 
 
 if __name__ == "__main__":
-
-    # Stock List
-    ticker_list = ["0050.TW", "2330.TW", "AAPL"]
-    # Setup object list
-    stocks = [Stock(t) for t in ticker_list]
-
-    for s in stocks:
-        s.download_data()
-        s.output_data()
-        s.output_plot()
+    while True:
+        print("-" * 50)
+        ticker = input("輸入股票代號（輸入 -1 結束）：")
+        print("-" * 50)
+        if ticker == "-1":
+            print("bye bye~")
+            break
+        test_local(ticker)
