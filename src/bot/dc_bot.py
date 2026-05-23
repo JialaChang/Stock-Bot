@@ -4,10 +4,10 @@ import os
 import io
 from dotenv import load_dotenv
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
-from core import StockDataFetcher, TechnicalAnalyzer, StockVisualizer
-from dc_bot_view import DiscordStockChart
+from src.core import StockDataFetcher, TechnicalAnalyzer, StockVisualizer
+from src.bot.dc_bot_view import DiscordStockChart
 
 # 載入 .env 環境變數
 load_dotenv()
@@ -29,7 +29,9 @@ bot = commands.Bot(command_prefix='$', intents=intents)
 
 # 日誌輸出函式
 def log_print(msg: str):
-    now = datetime.now().strftime("%H:%M:%S")
+    # 設定為台灣時區 (UTC+8)
+    tz = timezone(timedelta(hours=8))
+    now = datetime.now(tz).strftime("%H:%M:%S")
     print(f"({now}) {msg}")
 
 # 機器人上線通知

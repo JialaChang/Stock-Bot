@@ -55,7 +55,7 @@ class StockDataFetcher:
             return data
 
         except Exception as e:
-            print(f"[System] : {self.ticker} 資料下載或清洗失敗: {e}")
+            print(f"[System] : {self.ticker} 資料下載或清洗失敗：{e}")
             return pd.DataFrame()
 
 

@@ -3,13 +3,13 @@ import discord
 from discord.ui import Button, View
 import asyncio
 import io
-from datetime import datetime
-
-from core import StockVisualizer
+from datetime import datetime, timezone, timedelta
 
 # 日誌輸出函式
 def log_print(msg: str):
-    now = datetime.now().strftime("%H:%M:%S")
+    # 設定為台灣時區 (UTC+8)
+    tz = timezone(timedelta(hours=8))
+    now = datetime.now(tz).strftime("%H:%M:%S")
     print(f"({now}) {msg}")
 
 # Discord 訊息物件

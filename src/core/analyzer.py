@@ -1,6 +1,6 @@
 import pandas as pd
 import pandas_ta as pta
-from models import StockSnapshot
+from src.models import StockSnapshot
 
 class TechnicalAnalyzer:
     @staticmethod
