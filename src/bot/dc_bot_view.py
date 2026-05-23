@@ -35,9 +35,9 @@ class DiscordStockChart(View):
                     color=0x2f3136
                 )
                 await self.message.edit(embed=expired_embed, attachments=[], view=None) # pyright: ignore[reportGeneralTypeIssues]
-                log_print(f"[BOT] {self.stock_ticker} 訊息已刪除")
+                log_print(f"[BOT] '{self.stock_ticker}' 訊息已刪除")
             except Exception as e:
-                log_print(f"[BOT] {self.stock_ticker} 訊息刪除失敗：{e}")
+                log_print(f"[BOT] '{self.stock_ticker}' 訊息刪除失敗：{e}")
         # 將自身數據清空
         self.history_bytes = None
         self.intraday_bytes = None

@@ -64,8 +64,11 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
             asyncio.to_thread(fetcher.fetch_historical_data),
             asyncio.to_thread(fetcher.fetch_intraday_data)
         )
+        
+        # 若資料為空
         if history_data.empty or intraday_data.empty:
-            await interaction.followup.send("無法取得股票資訊...")
+            await interaction.followup.send(f"無法取得 `{stock_ticker}` 的股票資料...\n> 請確認輸入的股票代碼是否正確，或該股票尚未加入本系統資料庫")
+            log_print(f"[BOT] '{stock_ticker}' 資料取得失敗")
             return
         latest_time = await asyncio.to_thread(fetcher.fetch_latest_time)
         
@@ -105,7 +108,7 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
         msg = await interaction.followup.send(embed=embed, file=file, view=view)
         view.message = msg
 
-        log_print(f"[BOT] {stock_ticker} 訊息輸出成功")
+        log_print(f"[BOT] '{stock_ticker}' 訊息輸出成功")
 
     except Exception as e:
         await interaction.followup.send(f"發生錯誤：{e}")

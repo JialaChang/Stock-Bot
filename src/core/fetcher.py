@@ -2,6 +2,10 @@ import yfinance as yf
 import pandas as pd
 import twstock
 import pytz
+import logging
+
+# 隱藏 yfinance 預設的終端機警告訊息
+logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 
 TW_CODES = twstock.codes
 

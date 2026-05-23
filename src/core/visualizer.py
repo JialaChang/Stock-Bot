@@ -68,11 +68,14 @@ class StockVisualizer:
         
         # 建立開盤價參考線與紅綠分段線
         ref_line = pd.Series(open_price, index=data.index)
-        addplot = [
-            mpf.make_addplot(above_open, color='#e74c3c', width=1),
-            mpf.make_addplot(below_open, color='#2ecc71', width=1),
-            mpf.make_addplot(ref_line, color='#a0a0a0', linestyle='dotted', width=2)
-        ]
+        addplot = [mpf.make_addplot(ref_line, color='#a0a0a0', linestyle='dotted', width=2)]
+        
+        # 檢查數據再加入繪圖陣列
+        # 避免一路漲或跌的情況報錯
+        if above_open.notna().any():
+            addplot.append(mpf.make_addplot(above_open, color='#e74c3c', width=1))
+        if below_open.notna().any():
+            addplot.append(mpf.make_addplot(below_open, color='#2ecc71', width=1))
         
         # 設定紅綠色的半透明填滿面積
         fills = [
