@@ -4,9 +4,9 @@
 ![Managed by uv](https://img.shields.io/badge/managed%20by-uv-purple)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-> 在 Discord 中實時查詢股票資訊和技術分析
+在 Discord 中實時查詢股票資訊和技術分析
 
-<div align="center">
+<div>
   
   [![邀請機器人](https://img.shields.io/badge/邀請機器人到伺服器-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/oauth2/authorize?client_id=1494994206425612399)
   
