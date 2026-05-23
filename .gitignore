@@ -9,3 +9,6 @@ wheels/
 # Virtual environments
 .venv
 .env
+
+# picture file
+test_chart.png

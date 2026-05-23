@@ -19,7 +19,8 @@ def test_local(ticker):
     snapshot = TechnicalAnalyzer.analyze(stock_ticker, stock_name, history_data, latest_time)
     
     # 產生並顯示圖表
-    chart_buffer = StockVisualizer.generate_chart(stock_ticker, history_data)
+    chart_buffer = StockVisualizer.generate_history_chart(stock_ticker, history_data)
+    # chart_buffer = StockVisualizer.generate_intraday_chart(stock_ticker, intraday_data)
     print("正在繪製圖表...")
     
     # 將記憶體中的圖片寫入本地實體檔案
@@ -28,6 +29,9 @@ def test_local(ticker):
         f.write(chart_buffer.getbuffer())
     
     print("圖表已儲存，正在使用系統預設程式開啟...")
+    print(f"[{ticker}] 最後 3 筆歷史資料日期為：\n", history_data.tail(3))
+    print(f"[{ticker}] 最後 3 筆盤中資料日期為：\n", intraday_data.tail(3))
+
     
     # 呼叫作業系統預設的圖片檢視器來開啟檔案
     # macOS

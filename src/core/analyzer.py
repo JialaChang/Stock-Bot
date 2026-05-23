@@ -17,7 +17,6 @@ class TechnicalAnalyzer:
         data['MA5'] = pta.sma(prices, length=5) # pyright: ignore[reportPrivateImportUsage]
         data['MA10'] = pta.sma(prices, length=10) # pyright: ignore[reportPrivateImportUsage]
         data['MA20'] = pta.sma(prices, length=20) # pyright: ignore[reportPrivateImportUsage]
-        data['MA60'] = pta.sma(prices, length=60) # pyright: ignore[reportPrivateImportUsage]
 
         # 計算漲跌幅
         curr_price = prices.iloc[-1]

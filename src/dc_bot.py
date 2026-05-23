@@ -1,11 +1,13 @@
 import discord
 from discord.ext import commands
 import os
+import io
 from dotenv import load_dotenv
 import asyncio
+from datetime import datetime
 
 from core import StockDataFetcher, TechnicalAnalyzer, StockVisualizer
-
+from dc_bot_view import DiscordStockChart
 
 # 載入 .env 環境變數
 load_dotenv()
@@ -25,13 +27,23 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='$', intents=intents)
 
+# 日誌輸出函式
+def log_print(msg: str):
+    now = datetime.now().strftime("%H:%M:%S")
+    print(f"({now}) {msg}")
+
 # 機器人上線通知
 @bot.event
 async def on_ready():
     if GUILD:
         bot.tree.copy_global_to(guild=GUILD)
     await bot.tree.sync()
-    print(f"[BOT] Login Identity --> {bot.user}")
+    log_print(f"[BOT] Login Identity --> {bot.user}")
+
+# 機器人離線通知
+@bot.event
+async def on_disconnect():
+    log_print("[BOT] Disconnected")
 
 # 機器人指令
 @bot.tree.command(name="stock", description="輸入股票代碼查詢資訊與圖表（若不是台股與美股請輸入完整後綴）")
@@ -50,8 +62,8 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
             asyncio.to_thread(fetcher.fetch_historical_data),
             asyncio.to_thread(fetcher.fetch_intraday_data)
         )
-        if history_data.empty:
-            await interaction.followup.send("無法取得股票資訊，請確認代碼是否正確...")
+        if history_data.empty or intraday_data.empty:
+            await interaction.followup.send("無法取得股票資訊...")
             return
         latest_time = await asyncio.to_thread(fetcher.fetch_latest_time)
         
@@ -59,8 +71,15 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
         snapshot = TechnicalAnalyzer.analyze(stock_ticker, stock_name, history_data, latest_time)
 
         # 輸出圖表 buffer
-        image_buffer = await asyncio.to_thread(StockVisualizer.generate_chart, stock_ticker, history_data)
-        file = discord.File(image_buffer, filename="chart.png")
+        history_buffer, intraday_buffer = await asyncio.gather(
+            asyncio.to_thread(StockVisualizer.generate_history_chart, stock_ticker, history_data),
+            asyncio.to_thread(StockVisualizer.generate_intraday_chart, stock_ticker, intraday_data)
+        )
+        history_bytes = history_buffer.getvalue()
+        intraday_bytes = intraday_buffer.getvalue()
+
+        # 輸出預設圖表
+        file = discord.File(io.BytesIO(history_bytes), filename="chart.png")
 
         # 將資料打包成 Embed 輸出
         # embed color: red, green, gray
@@ -78,7 +97,13 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
         embed.set_footer(text=f"資料時間: {snapshot.latest_time_str}   |   資料來源: Yahoo Finance")
         embed.set_image(url="attachment://chart.png")
 
-        await interaction.followup.send(embed=embed, file=file)
+        # 實例化按鈕 view
+        view = DiscordStockChart(stock_ticker, history_bytes, intraday_bytes)
+        # 輸出訊息並綁回 view
+        msg = await interaction.followup.send(embed=embed, file=file, view=view)
+        view.message = msg
+
+        log_print(f"[BOT] {stock_ticker} 訊息輸出成功")
 
     except Exception as e:
         await interaction.followup.send(f"發生錯誤：{e}")

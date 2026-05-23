@@ -38,26 +38,24 @@ class StockDataFetcher:
     def _download_and_clean(self, period: str, interval: str) -> pd.DataFrame:
         """核心下載資料並清洗"""
         try:
-            data = yf.download(self.ticker, period=period, interval=interval, auto_adjust=True, progress=False)
-            # 如果資料為空回傳一個空的 dataframe 防止型別錯誤
-            if data is None or data.empty:
-                return pd.DataFrame()
+            stock = yf.Ticker(self.ticker)
+            data = stock.history(period=period, interval=interval, actions=False)
+            
+            # 如果沒抓到資料直接回傳空表格
+            if data.empty:
+                return data
+            
+            # 只保留開高低收跟成交量
+            core_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+            data = data[core_cols]
+            
+            # 清洗空缺數據
+            data = data.dropna(subset=core_cols)
 
-            # 處理多重索引
-            # 若同時下載多檔股票會回傳多重索引欄位
-            if isinstance(data.columns, pd.MultiIndex):
-                data = data.xs(self.ticker, level=1, axis=1)
-            # 確保回傳 DataFrame 而非 Series
-            if isinstance(data, pd.Series):
-                data = data.to_frame()
-                
-            # 清除空缺資料 (NaN)
-            data.dropna(subset=['Close'], inplace=True)
             return data
 
         except Exception as e:
-            # 攔截斷線或 API 錯誤
-            print(f"[Warning] 網路或 API 錯誤：{e}")
+            print(f"[System] : {self.ticker} 資料下載或清洗失敗: {e}")
             return pd.DataFrame()
 
 
@@ -67,7 +65,6 @@ class StockDataFetcher:
         if self.historical_data is not None and not force_refresh:
             return self.historical_data
 
-        self.fetch_intraday_data(force_refresh=force_refresh)
         self.historical_data = self._download_and_clean(period=period, interval="1d")
         return self.historical_data
 
