@@ -9,7 +9,7 @@ matplotlib.use('Agg')
 
 class StockVisualizer:
     @staticmethod
-    def generate_history_chart(ticker: str, data: pd.DataFrame, days: int  = 60) -> io.BytesIO:
+    def generate_history_chart(ticker: str, data: pd.DataFrame, days: int  = 61) -> io.BytesIO:
         """根據 DataFrame 繪製 K 線與均線圖，並回傳 BytesIO 記憶體緩衝區"""
         # 直接使用在 analyzer 算好的 data
         plot_data = data.iloc[-days:]

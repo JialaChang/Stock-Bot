@@ -31,7 +31,7 @@ class DiscordStockChart(View):
             try:
                 expired_embed = discord.Embed(
                     title=f"{self.stock_ticker} 查詢已過期",
-                    description="此訊息超過 5 分鐘已自動刪除，請重新輸入 `/stock` 查詢。",
+                    description="此訊息超過 5 分鐘已自動刪除，請重新輸入 `/stock` 查詢",
                     color=0x2f3136
                 )
                 await self.message.edit(embed=expired_embed, attachments=[], view=None) # pyright: ignore[reportGeneralTypeIssues]

@@ -7,8 +7,9 @@ wheels/
 *.egg-info
 
 # Virtual environments
-.venv
+.venv/
+.vscode/
 .env
 
-# picture file
-test_chart.png
+# database
+*.db
