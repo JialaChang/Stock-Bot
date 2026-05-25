@@ -13,3 +13,4 @@ wheels/
 
 # database
 *.db
+*.sql

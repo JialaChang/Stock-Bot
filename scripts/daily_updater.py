@@ -7,7 +7,7 @@ import pandas as pd
 
 # 將專案根目錄加入路徑
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.database.database import DB_PATH
+from src.database import DB_PATH
 
 
 def fetch_all_stocks(conn: sqlite3.Connection) -> list:
@@ -21,7 +21,7 @@ def fetch_all_stocks(conn: sqlite3.Connection) -> list:
 
 
 def update_stock_data():
-    """從 yahooh finanace 下載所有在資料庫中股票的最新數據"""
+    """從 yahoo finanace 下載所有在資料庫中股票的最新數據"""
     print(f"[DB] 啟動股票資料更新...")
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -31,13 +31,21 @@ def update_stock_data():
         total_stocks = len(tickers)
         print(f"[DB] 成功自資料庫讀取 {total_stocks} 檔股票並開始下載...")
         # 抓多天的避免休市沒資料
-        data = yf.download(tickers, period="5d", interval="1d", group_by='ticker', actions=False, progress=False, auto_adjust=True, threads=True)
+        data = yf.download(
+            tickers, 
+            period="5d", 
+            interval="1d", 
+            group_by='ticker', 
+            actions=False, 
+            progress=False, 
+            auto_adjust=True, 
+            threads=True
+        )
         print(f"[DB] 資料下載成功，開始填入資料庫...")
 
         sucess_count = 0
         # 解析數據並寫入資料庫
         for ticker in tickers:
-            # 判斷資料庫是否有多檔股票
             try:
                 # levels[0] 即是股票代碼
                 if ticker not in data.columns.levels[0]: # pyright: ignore[reportAttributeAccessIssue, reportOptionalMemberAccess]

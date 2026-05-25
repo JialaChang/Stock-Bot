@@ -6,8 +6,10 @@ from dotenv import load_dotenv
 import asyncio
 from datetime import datetime, timezone, timedelta
 
-from src.core import StockDataFetcher, TechnicalAnalyzer, StockVisualizer
-from src.bot.dc_bot_view import DiscordStockChart
+from src.data import StockDataFetcher
+from src.quant import TechnicalAnalyzer
+from src.utils import StockVisualizer
+from src.bot import DiscordStockChart
 
 # 載入 .env 環境變數
 load_dotenv()

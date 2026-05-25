@@ -6,7 +6,7 @@ import pandas as pd
 
 # 將專案根目錄加入路徑
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.database.database import DB_PATH, init_database
+from src.database import DB_PATH, init_database
 
 
 def import_taiwan_stocks(conn):
@@ -18,7 +18,12 @@ def import_taiwan_stocks(conn):
     for code, info in twstock.codes.items():
         # 只取股票與 ETF
         if info.type in ['股票', 'ETF']:
-            ticker = f"{code}.TW"
+            if info.market == '上市':
+                ticker = f"{code}.TW"
+            elif info.market == '上櫃':
+                ticker = f"{code}.TWO"
+            else:
+                continue
             # 加入資料庫
             cursor.execute('''
                 INSERT OR REPLACE INTO stocks (ticker, name, market)
@@ -93,6 +98,48 @@ def import_us_stocks(conn):
     print(f"[DB] 成功匯入 {total_count} 檔美股！")
 
 
+def import_global_indices(conn):
+    """匯入全球重要大盤與核心指數"""
+    print("[DB] 開始匯入全球重要大盤與核心指數...")
+    cursor = conn.cursor()
+    
+    indices = {
+        # 美國指數
+        '^GSPC': '標普 500 指數',
+        '^DJI': '道瓊工業指數',
+        '^IXIC': '那斯達克綜合指數',
+        '^SOX': '費城半導體指數',
+        '^VIX': '恐慌指數',
+        
+        # 亞太指數
+        '^TWII': '台灣加權指數',
+        '^TWOII': '台灣櫃買指數',
+        '^HSI': '香港恆生指數',
+        '000001.SS': '上證綜合指數',
+        '399001.SZ': '深證成指',
+        '^KS11': '韓國綜合指數',
+        '^N225': '日經225指數',
+
+        
+        # 歐洲指數
+        '^FTSE': '英國富時 100 指數',
+        '^GDAXI': '德國 DAX 指數',
+        '^FCHI': '法國 CAC 40 指數',
+        '^STOXX50E': '歐洲斯托克 50 指數'
+    }
+    
+    count = 0
+    for ticker, name in indices.items():
+        cursor.execute('''
+            INSERT OR REPLACE INTO stocks (ticker, name, market)
+            VALUES (?, ?, ?)
+        ''', (ticker, name, 'INDEX'))
+        count += 1
+        
+    conn.commit()
+    print(f"[DB] 成功匯入 {count} 檔全球大盤指數！")
+
+
 if __name__ == "__main__":
     # 檢查資料庫
     init_database()
@@ -101,6 +148,7 @@ if __name__ == "__main__":
     try:
         import_taiwan_stocks(conn)
         import_us_stocks(conn)
+        import_global_indices(conn)
         print(f"[DB] 成功完成股票資料匯入！")
     finally:
         conn.close()
