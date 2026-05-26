@@ -25,6 +25,7 @@ def update_stock_data():
     """從 yahoo finanace 下載所有在資料庫中股票的最新數據"""
     print(f"[DB] 啟動股票每日資料更新...")
     conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")
     cursor = conn.cursor()
 
     try:

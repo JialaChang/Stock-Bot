@@ -118,7 +118,7 @@ def import_global_indices(conn):
         '000001.SS': '上證綜合指數',
         '399001.SZ': '深證成指',
         '^KS11': '韓國綜合指數',
-        '^N225': '日經225指數',
+        '^N225': '日經 225 指數',
 
         
         # 歐洲指數
@@ -145,6 +145,7 @@ if __name__ == "__main__":
     init_database()
 
     conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")
     try:
         import_taiwan_stocks(conn)
         import_us_stocks(conn)

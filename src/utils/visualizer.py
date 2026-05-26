@@ -64,7 +64,7 @@ class StockVisualizer:
         
         # 分離高於與低於開盤價的數據
         above_open = data['Close'].where(data['Close'] >= open_price)
-        below_open = data['Close'].where(data['Close'] <= open_price)
+        below_open = data['Close'].where(data['Close'] < open_price)
         
         # 建立開盤價參考線與紅綠分段線
         ref_line = pd.Series(open_price, index=data.index)
