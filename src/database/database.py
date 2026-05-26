@@ -30,9 +30,17 @@ def init_database():
             high_price REAL,
             low_price REAL,
             close_price REAL,
+            adjust_close_price REAL,
             volume REAL,
-            FOREIGN KEY (ticker) REFERENCES stocks (ticker)
+            FOREIGN KEY (ticker) REFERENCES stocks (ticker),
+            UNIQUE(ticker, date)
         )
+    ''')
+
+    # 建立索引表
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS index_ticker_date 
+        ON daily_prices (ticker, date)
     ''')
 
     # 儲存變更並關閉連線

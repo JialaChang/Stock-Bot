@@ -35,9 +35,10 @@ def backfill_history(period: int):
     print(f"[DB] 開始近 {period} 年的股票歷史數據回補...")
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    tickers = fetch_all_stocks(conn, 10000)
+    tickers = fetch_all_stocks(conn, 300)
     total_stocks = len(tickers)
 
+    total_success = 0
     # 單次下載批次的數量
     chunk_size = 50
     for i in range(0, total_stocks, chunk_size):
@@ -50,7 +51,7 @@ def backfill_history(period: int):
             group_by='ticker', 
             actions=False, 
             progress=False, 
-            auto_adjust=True, 
+            auto_adjust=False, 
             threads=True
         )
 
@@ -66,9 +67,9 @@ def backfill_history(period: int):
                         continue
                     stock_data = data[ticker] # pyright: ignore[reportOptionalSubscript]
                 
-                stock_data = stock_data.dropna(subset=['Close']) # pyright: ignore[reportOptionalMemberAccess]
+                stock_data = stock_data.dropna(subset=['Adj Close']) # pyright: ignore[reportOptionalMemberAccess]
                 if stock_data.empty:
-                    print(f"[DB] 股票 {ticker}  下載失敗或無有效歷史資料...")
+                    print(f"[DB] '{ticker}'  下載失敗或無有效歷史數據...")
                     continue
 
                 records = []
@@ -80,28 +81,30 @@ def backfill_history(period: int):
                         float(row['High']),
                         float(row['Low']),
                         float(row['Close']),
+                        float(row['Adj Close']),
                         float(row['Volume'])
                     ))
                 
                 cursor.executemany('''
                     INSERT OR REPLACE INTO daily_prices
-                    (ticker, date, open_price, high_price, low_price, close_price, volume)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (ticker, date, open_price, high_price, low_price, close_price, adjust_close_price, volume)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ''', records)
                 success_count += 1
+                total_success += 1
 
 
             except Exception as e:
-                print(f"[DB] 股票 {ticker} 處理失敗：{e}")
+                print(f"[DB] '{ticker}' 處理失敗：{e}")
                 continue
         
         conn.commit()
-        print(f"[DB] 批次寫入完成，成功填入 {success_count} 檔的歷史數據！")
+        print(f"[DB] 批次寫入完成，成功填入 {success_count}/{len(chunk_tickers)} 檔的歷史數據！")
         # 等待幾秒防止被封鎖
         time.sleep(10)
     
     conn.close()
-    print(f"[DB] 歷史資料回補完成！")
+    print(f"[DB] 歷史資料回補完成，成功填入 {total_success}/{total_stocks} 檔的歷史數據！")
 
 if __name__ == "__main__":
     backfill_history(10)
