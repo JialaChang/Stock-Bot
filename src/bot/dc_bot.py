@@ -75,7 +75,7 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
         latest_time = await asyncio.to_thread(fetcher.fetch_latest_time)
         
         # 技術指標分析
-        snapshot = TechnicalAnalyzer.analyze(stock_ticker, stock_name, history_data, latest_time)
+        snapshot = TechnicalAnalyzer.analyze(stock_ticker, stock_name, history_data, intraday_data, latest_time)
 
         # 輸出圖表 buffer
         history_buffer, intraday_buffer = await asyncio.gather(
@@ -84,6 +84,10 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
         )
         history_bytes = history_buffer.getvalue()
         intraday_bytes = intraday_buffer.getvalue()
+        
+        # 關閉緩衝區釋放記憶體
+        history_buffer.close()
+        intraday_buffer.close()
 
         # 輸出預設圖表
         file = discord.File(io.BytesIO(history_bytes), filename="chart.png")
@@ -113,7 +117,9 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
         log_print(f"[BOT] '{stock_ticker}' 訊息輸出成功")
 
     except Exception as e:
+        log_print(f"[BOT] '{stock_ticker}' 訊息輸出錯誤：{e}")
         await interaction.followup.send(f"發生錯誤：{e}")
+
 
 if __name__ == "__main__":
     bot.run(TOKEN)

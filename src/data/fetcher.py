@@ -24,7 +24,6 @@ class StockDataFetcher:
         self.ticker = self._format_ticker(ticker)
         self.historical_data = None
         self.intraday_data = None
-        self.conn = None
     
 
     def _format_ticker(self, ticker: str):
@@ -44,10 +43,9 @@ class StockDataFetcher:
 
     def _get_database_connection(self) -> sqlite3.Connection:
         """獲取資料庫連線"""
-        if self.conn is None:
-            self.conn = sqlite3.connect(DB_PATH)
-            self.conn.execute("PRAGMA foreign_keys = ON")
-        return self.conn
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
 
 
     def check_stock_exist(self) -> bool:
@@ -56,7 +54,10 @@ class StockDataFetcher:
             conn = self._get_database_connection()
             cursor = conn.cursor()
             cursor.execute("SELECT 1 FROM stocks WHERE ticker = ? LIMIT 1", (self.ticker,))
-            return cursor.fetchone() is not None
+            result = cursor.fetchone() is not None
+            cursor.close()
+            conn.close()
+            return result
         except Exception:
             return False
 
@@ -70,6 +71,7 @@ class StockDataFetcher:
             cursor.execute("SELECT name FROM stocks WHERE ticker = ?", (self.ticker,))
             result = cursor.fetchone()
             cursor.close()
+            conn.close()
 
             if result:
                 return result[0]
@@ -122,9 +124,18 @@ class StockDataFetcher:
                 index_col='date'
             )
 
+            conn.close()
+
             if self.historical_data.empty:
                 print(f"[System] 資料庫中無 '{self.ticker}' 的歷史資料...")
             else:
+                # 透過比例調整開高低收
+                adj_ratio = self.historical_data['AdjClose'] / self.historical_data['Close']
+                self.historical_data['Open'] = self.historical_data['Open'] * adj_ratio
+                self.historical_data['High'] = self.historical_data['High'] * adj_ratio
+                self.historical_data['Low'] = self.historical_data['Low'] * adj_ratio
+                self.historical_data['Close'] = self.historical_data['AdjClose']
+                
                 print(f"[System] 成功從資料庫查詢 '{self.ticker}' 的 {len(self.historical_data)} 筆歷史資料！")
             
             return self.historical_data
@@ -147,10 +158,10 @@ class StockDataFetcher:
             
             # 只保留開高低收跟成交量
             core_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
-            self.intraday_data = data[core_cols]
+            data = data[core_cols]
             
             # 清洗空缺數據
-            self.intraday_data = data.dropna(subset=core_cols)
+            self.intraday_data = data.dropna()
 
             if not self.intraday_data.empty:
                 print(f"[System] 成功下載 '{self.ticker}' 的 {len(self.intraday_data)} 筆盤中資料！")
@@ -191,6 +202,8 @@ class StockDataFetcher:
         )
 
         result = cursor.fetchone()
+        cursor.close()
+        conn.close()
         if result:
             return {
                 "total_records": result[0],
@@ -217,18 +230,6 @@ class StockDataFetcher:
             "盤中資料筆數": len(intra_data),
         }
     
-
-    def close(self):
-        """關閉資料庫連線"""
-        if self.conn:
-            self.conn.close()
-            self.conn = None
- 
- 
-    def __del__(self):
-        """析構時自動關閉連線"""
-        self.close()
-
 
 # debug test
 if __name__ == "__main__":

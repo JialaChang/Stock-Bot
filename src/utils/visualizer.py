@@ -80,7 +80,7 @@ class StockVisualizer:
         # 設定紅綠色的半透明填滿面積
         fills = [
             dict(y1=data['Close'].values, y2=open_price, where=(data['Close'] >= open_price).values, color='#e74c3c', alpha=0.1),
-            dict(y1=data['Close'].values, y2=open_price, where=(data['Close'] <= open_price).values, color='#2ecc71', alpha=0.1)
+            dict(y1=data['Close'].values, y2=open_price, where=(data['Close'] < open_price).values, color='#2ecc71', alpha=0.1)
         ]
 
         # 設定樣式

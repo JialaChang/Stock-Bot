@@ -65,7 +65,7 @@ def update_stock_data():
 
                     stock_data = stock_data.dropna(subset=['Adj Close']) # pyright: ignore[reportOptionalMemberAccess]
                     if stock_data.empty:
-                        print(f"[DB] '{ticker}'  下載失敗或無有效最新數據...")
+                        print(f"[DB] '{ticker}' 下載失敗或無有效最新數據...")
                         continue
                 
                     records = []
