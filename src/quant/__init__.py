@@ -1,1 +1,1 @@
-from .analyzer import TechnicalAnalyzer
+from .indicator import TechnicalIdicator

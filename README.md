@@ -4,13 +4,11 @@
 ![Managed by uv](https://img.shields.io/badge/managed%20by-uv-purple)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Stock Bot 是一個基於 Python 與 SQLite 打造的台美股量化分析與 Discord 機器人系統。透過高度模組化的架構，它不僅能自動化爬取、清洗與回補 Yahoo Finance 的歷史及盤中報價，還能在 Discord 頻道中即時渲染專業的 K 線圖與分時走勢圖，提供流暢的投資互動體驗。
-
 <div>
   
   [![邀請機器人](https://img.shields.io/badge/邀請機器人到伺服器-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/oauth2/authorize?client_id=1494994206425612399)
   
-  <img src="./docs/image.png" width="500" alt="圖表頁面">
+  <img src="./docs/image.png" width="300" alt="圖表頁面">
 </div>
 
 ## 專案結構
@@ -18,6 +16,7 @@ Stock Bot 是一個基於 Python 與 SQLite 打造的台美股量化分析與 Di
 ```
 stock-bot/
 ├── src/                           # 系統核心程式碼
+│   │
 │   ├── bot/                       # 表現層 (Presentation Layer)
 │   │   ├── __init__.py
 │   │   ├── dc_bot.py              # Discord 機器人主程式與事件監聽
@@ -29,11 +28,11 @@ stock-bot/
 │   │
 │   ├── quant/                     # 業務邏輯層 (Business Logic Layer)
 │   │   ├── __init__.py
-│   │   └── analyzer.py            # 技術指標計算 (RSI, MA 等)
+│   │   └── indicator.py            # 技術指標計算 (RSI, MA 等)
 │   │
 │   ├── database/                  # 儲存層 (Data Access Layer)
 │   │   ├── __init__.py
-│   │   └── database.py            # SQLite 連線管理與資料庫操作
+│   │   └── database.py            # SQLite 資料庫建立與操作
 │   │
 │   ├── models/                    # 資料模型 (Data Models)
 │   │   ├── __init__.py
@@ -54,6 +53,7 @@ stock-bot/
 ├── stock_data.db                  # SQLite 資料庫檔案 (初次執行自動生成)
 ├── pyproject.toml                 # 專案依賴套件與環境設定檔
 ├── README.md                      # 專案主說明文件
+├── UML.md                         # 專案 UML 架構 
 ├── main.py                        # 系統主進入點：負責啟動 Discord 機器人
 └── .env                           # 環境變數設定檔 (存放 Token 等敏感機密)
 ```
@@ -67,7 +67,7 @@ stock-bot/
 - 獲取股票名稱和最新交易時間
 - 自動時區轉換 (UTC → 台灣時間)
 
-### TechnicalAnalyzer (`src/quant/analyzer.py`)
+### TechnicalIdicator (`src/quant/indicator.py`)
 執行技術分析：
 - 計算 RSI（相對強度指數）
 - 計算移動平均線（5、10、20 日期）

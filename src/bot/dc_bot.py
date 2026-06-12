@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import asyncio
 
 from src.data import StockDataFetcher
-from src.quant import TechnicalAnalyzer
+from src.quant import TechnicalIdicator
 from src.utils import StockVisualizer
 from src.bot import DiscordStockChart
 
@@ -71,7 +71,7 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
         
         # 背景執行技術指標運算
         snapshot = await asyncio.to_thread(
-            TechnicalAnalyzer.analyze, stock_ticker, stock_name, history_data, intraday_data, latest_time
+            TechnicalIdicator.analyze, stock_ticker, stock_name, history_data, intraday_data, latest_time
         )
 
         # 並發渲染兩張圖表

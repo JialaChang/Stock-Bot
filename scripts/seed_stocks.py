@@ -28,8 +28,11 @@ def import_taiwan_stocks(conn: sqlite3.Connection):
                 continue
             # 加入資料庫
             cursor.execute('''
-                INSERT OR REPLACE INTO stocks (ticker, name, market)
+                INSERT INTO stocks (ticker, name, market)
                 VALUES (?, ?, ?)
+                ON CONFLICT(ticker) DO UPDATE SET
+                    name=excluded.name,
+                    market=excluded.market
             ''', (ticker, info.name, 'TW'))
             count += 1
             
@@ -81,8 +84,11 @@ def import_us_stocks(conn: sqlite3.Connection):
             ]
             
             cursor.executemany('''
-                INSERT OR REPLACE INTO stocks (ticker, name, market)
+                INSERT INTO stocks (ticker, name, market)
                 VALUES (?, ?, ?)
+                ON CONFLICT(ticker) DO UPDATE SET
+                    name=excluded.name,
+                    market=excluded.market
             ''', records)
             
             conn.commit()
@@ -127,8 +133,11 @@ def import_global_indices(conn: sqlite3.Connection):
     records = [(ticker, name, 'INDEX') for ticker, name in indices.items()]
     
     cursor.executemany('''
-        INSERT OR REPLACE INTO stocks (ticker, name, market)
+        INSERT INTO stocks (ticker, name, market)
         VALUES (?, ?, ?)
+        ON CONFLICT(ticker) DO UPDATE SET
+            name=excluded.name,
+            market=excluded.market
     ''', records)
         
     conn.commit()

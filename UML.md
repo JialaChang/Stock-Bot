@@ -1,6 +1,6 @@
 # 系統架構與 UML 類別圖
 
-本圖表展示了此專案中各個模組（Data, Quant, Models, Utils, Bot, Scripts）之間的相依性與核心類別結構。
+本圖表展示了此專案中各個模組之間的相依性與核心類別結構。
 
 ```mermaid
 classDiagram
@@ -40,7 +40,7 @@ classDiagram
     %% --------------------------------
     %% 技術分析 (Quant)
     %% --------------------------------
-    class TechnicalAnalyzer {
+    class TechnicalIdicator {
         <<Static Utility>>
         +analyze(ticker, name, history_data, intraday_data, latest_time) StockSnapshot
     }
@@ -74,25 +74,56 @@ classDiagram
     }
 
     %% --------------------------------
-    %% 獨立排程腳本與資料庫 (Scripts & DB)
+    %% 資料庫表 (Database Tables)
     %% --------------------------------
-    namespace Database_And_Scripts {
-        class SQLite_Database
-        class daily_updater
-        class historical_backfill
-        class seed_stocks
+    class Stocks {
+        <<Database Table>>
+        +ticker TEXT PK
+        +name TEXT NOT NULL
+        +market TEXT
+    }
+
+    class DailyPrices {
+        <<Database Table>>
+        +id INTEGER PK
+        +ticker TEXT FK
+        +date TEXT NOT NULL
+        +open_price REAL
+        +high_price REAL
+        +low_price REAL
+        +close_price REAL
+        +adjust_close_price REAL
+        +volume REAL
+    }
+
+    %% --------------------------------
+    %% 獨立排程腳本 (Scripts)
+    %% --------------------------------
+    class daily_updater {
+        <<Script>>
+    }
+
+    class historical_backfill {
+        <<Script>>
+    }
+
+    class seed_stocks {
+        <<Script>>
     }
 
     %% 關聯性定義 (Relationships)
     DiscordBot --> StockDataFetcher : 1. 抓取資料
-    DiscordBot --> TechnicalAnalyzer : 2. 指標運算
+    DiscordBot --> TechnicalIdicator : 2. 指標運算
     DiscordBot --> StockVisualizer : 3. 繪製圖表
     DiscordBot --> DiscordStockChart : 4. 綁定按鈕與渲染
     
-    TechnicalAnalyzer ..> StockSnapshot : 實例化回傳
+    TechnicalIdicator ..> StockSnapshot : 實例化回傳
     
-    StockDataFetcher ..> SQLite_Database : 讀取 (Query)
-    daily_updater ..> SQLite_Database : 寫入 (Upsert)
-    historical_backfill ..> SQLite_Database : 寫入 (Batch Insert)
-    seed_stocks ..> SQLite_Database : 初始化 (Initialize)
+    StockDataFetcher ..> Stocks : 讀取資料
+    StockDataFetcher ..> DailyPrices : 讀取資料
+    daily_updater ..> DailyPrices : 寫入
+    historical_backfill ..> DailyPrices : 寫入
+    seed_stocks ..> Stocks : 初始化
+    
+    DailyPrices --> Stocks : FK (ticker)
 ```

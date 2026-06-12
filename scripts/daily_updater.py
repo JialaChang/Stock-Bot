@@ -8,6 +8,7 @@ import logging
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.database import DB_PATH
 
+logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -80,11 +81,18 @@ def update_stock_data():
                             ) for date, row in stock_data.iterrows()
                         ]
 
-                        # 使用 INSERT OR REPLACE 達成 Upsert (Update or Insert) 的等冪性操作
+                        # 使用 ON CONFLICT 達成更高效且不改變 ID 的 Upsert
                         conn.cursor().executemany('''
-                            INSERT OR REPLACE INTO daily_prices
+                            INSERT INTO daily_prices
                             (ticker, date, open_price, high_price, low_price, close_price, adjust_close_price, volume)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(ticker, date) DO UPDATE SET
+                                open_price=excluded.open_price,
+                                high_price=excluded.high_price,
+                                low_price=excluded.low_price,
+                                close_price=excluded.close_price,
+                                adjust_close_price=excluded.adjust_close_price,
+                                volume=excluded.volume
                         ''', records)
                         
                         success_count += 1

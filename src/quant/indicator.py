@@ -2,7 +2,7 @@ import pandas as pd
 import pandas_ta as pta
 from src.models import StockSnapshot
 
-class TechnicalAnalyzer:
+class TechnicalIdicator:
     @staticmethod
     def analyze(ticker: str, name: str, history_data: pd.DataFrame, intraday_data: pd.DataFrame, latest_time) -> StockSnapshot:
         """
