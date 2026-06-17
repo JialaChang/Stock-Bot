@@ -9,8 +9,11 @@ wheels/
 # Virtual environments
 .venv/
 .vscode/
-.env
 
 # database
 *.db
 *.sql
+
+# others
+.env
+CLAUDE.md

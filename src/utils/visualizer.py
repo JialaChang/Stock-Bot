@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 matplotlib.use('Agg')
 
 class StockVisualizer:
-    """負責股票資料視覺化的靜態工具類，封裝 mplfinance 的繪圖邏輯"""
+    """K 線圖與分時圖生成工具"""
     MARKET_COLORS = mpf.make_marketcolors(
         up='red',
         down='green',
@@ -20,11 +20,9 @@ class StockVisualizer:
 
     @classmethod
     def generate_history_chart(cls, ticker: str, data: pd.DataFrame, days: int = 61) -> io.BytesIO:
-        """生成歷史日線 K 線圖 (包含均線與成交量)，回傳記憶體緩衝區以供 Discord 直接讀取"""
-        # 裁切指定天數的資料進行渲染
+        """生成歷史日線 K 線圖（含均線與成交量），回傳 in-memory PNG 供 Discord 上傳"""
         plot_data = data.iloc[-days:]
 
-        # 建立移動平均線 (MA) 的覆蓋圖層
         addplot = [
             mpf.make_addplot(plot_data['MA5'], color="#FFA41C", width=1, label='5MA'),
             mpf.make_addplot(plot_data['MA10'], color="#05B3F3", width=1, label='10MA'),
@@ -53,28 +51,24 @@ class StockVisualizer:
         buffer.seek(0)
         plt.close('all')
         return buffer
-    
+
     @classmethod
     def generate_intraday_chart(cls, ticker: str, data: pd.DataFrame) -> io.BytesIO:
-        """生成盤中分時折線圖，利用紅綠分色顯示相對於開盤價的漲跌勢"""
-        # 提取開盤價
+        """生成盤中分時折線圖，以開盤價為基準紅漲綠跌分色"""
         open_price = data['Open'].iloc[0]
-        
-        # 分離高於與低於開盤價的數據
+
         above_open = data['Close'].where(data['Close'] >= open_price)
         below_open = data['Close'].where(data['Close'] < open_price)
-        
-        # 建立開盤價參考線與紅綠分段線
+
+        # 開盤價虛線作為漲跌分界參考線
         ref_line = pd.Series(open_price, index=data.index)
         addplot = [mpf.make_addplot(ref_line, color='#a0a0a0', linestyle='dotted', width=2)]
-        
-        # 動態掛載紅綠折線圖層
+
         if above_open.notna().any():
             addplot.append(mpf.make_addplot(above_open, color='#e74c3c', width=1))
         if below_open.notna().any():
             addplot.append(mpf.make_addplot(below_open, color='#2ecc71', width=1))
-        
-        # 設定相對於基準價的半透明區域填滿效果
+
         fills = [
             dict(y1=data['Close'].values, y2=open_price, where=(data['Close'] >= open_price).values, color='#e74c3c', alpha=0.1),
             dict(y1=data['Close'].values, y2=open_price, where=(data['Close'] < open_price).values, color='#2ecc71', alpha=0.1)
@@ -98,7 +92,7 @@ class StockVisualizer:
             panel_ratios=(4, 1),
             savefig=buffer
         )
-        
-        buffer.seek(0)
+
+        buffer.seek(0)  # 重設讀取指標，供呼叫端從頭讀取
         plt.close('all')
         return buffer

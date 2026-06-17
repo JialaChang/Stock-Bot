@@ -3,10 +3,7 @@ from datetime import datetime
 
 @dataclass
 class StockSnapshot:
-    """
-    股票快照資料載體 (Data Transfer Object)\n
-    提供型別安全 (Type-Safety) 的方式在系統各模組之間傳遞分析結果
-    """
+    """跨模組傳遞股票分析結果的資料載體 (Data Transfer Object) """
     ticker: str
     name: str
     current_price: float
@@ -16,13 +13,13 @@ class StockSnapshot:
 
     @property
     def change_str(self) -> str:
-        """漲跌幅格式化：根據正負值補上漲跌符號"""
+        """格式化漲跌幅，附帶漲跌符號（∆ / ∇）"""
         icon = '∆' if self.change_percent >= 0 else '∇'
         return f"{icon} {abs(self.change_percent):.2f}%"
-    
+
     @property
     def latest_time_str(self) -> str:
-        """時間格式化輸出"""
+        """格式化資料時間戳"""
         if hasattr(self.latest_time, 'strftime'):
             return self.latest_time.strftime('%m-%d %H:%M')
         return str(self.latest_time)

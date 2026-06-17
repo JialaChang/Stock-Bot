@@ -40,7 +40,7 @@ classDiagram
     %% --------------------------------
     %% 技術分析 (Quant)
     %% --------------------------------
-    class TechnicalIdicator {
+    class TechnicalIndicator {
         <<Static Utility>>
         +analyze(ticker, name, history_data, intraday_data, latest_time) StockSnapshot
     }
@@ -113,11 +113,11 @@ classDiagram
 
     %% 關聯性定義 (Relationships)
     DiscordBot --> StockDataFetcher : 1. 抓取資料
-    DiscordBot --> TechnicalIdicator : 2. 指標運算
+    DiscordBot --> TechnicalIndicator : 2. 指標運算
     DiscordBot --> StockVisualizer : 3. 繪製圖表
     DiscordBot --> DiscordStockChart : 4. 綁定按鈕與渲染
     
-    TechnicalIdicator ..> StockSnapshot : 實例化回傳
+    TechnicalIndicator ..> StockSnapshot : 實例化回傳
     
     StockDataFetcher ..> Stocks : 讀取資料
     StockDataFetcher ..> DailyPrices : 讀取資料

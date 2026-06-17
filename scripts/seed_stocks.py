@@ -26,7 +26,6 @@ def import_taiwan_stocks(conn: sqlite3.Connection):
                 ticker = f"{code}.TWO"
             else:
                 continue
-            # 加入資料庫
             cursor.execute('''
                 INSERT INTO stocks (ticker, name, market)
                 VALUES (?, ?, ?)
@@ -50,14 +49,14 @@ def import_us_stocks(conn: sqlite3.Connection):
         "S&P 500": {
             "url": 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies',
             "table_index": 0,
-            "ticker_col": 'Symbol',  # 股票代碼
-            "name_col": 'Security'   # 股票名稱
+            "ticker_col": 'Symbol',
+            "name_col": 'Security'
         },
         "Dow Jones": {
             "url": 'https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average',
             "table_index": 1,
             "ticker_col": 'Symbol',
-            "name_col": 'Company'
+            "name_col": 'Company',
         },
         "Nasdaq 100": {
             "url": 'https://en.wikipedia.org/wiki/Nasdaq-100',

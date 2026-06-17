@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 TW_CODES = twstock.codes
 
 class StockDataFetcher:
-    """負責統籌跨資料源 (SQLite / yfinance / twstock) 的資料檢索服務"""
+    """整合 SQLite / yfinance / twstock 三個資料源的股票查詢服務"""
     def __init__(self, ticker: str):
         self._raw_ticker = ticker
         self.ticker = self._format_ticker(ticker)
@@ -26,7 +26,7 @@ class StockDataFetcher:
         self.intraday_data = None
 
     def _format_ticker(self, ticker: str) -> str:
-        """自動補齊後綴：讓使用者在查詢台股時不需手動輸入 .TW 或 .TWO"""
+        """將使用者輸入補齊為 Yahoo Finance 格式，查找優先序：本地 DB → twstock → 原始輸入"""
         try:
             # 剝離可能的後綴
             base_code = ticker.split(".")[0]
@@ -35,7 +35,7 @@ class StockDataFetcher:
             with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    SELECT ticker FROM stocks 
+                    SELECT ticker FROM stocks
                     WHERE ticker = ? OR ticker = ? OR ticker = ?
                     LIMIT 1
                 ''', (ticker, f"{base_code}.TW", f"{base_code}.TWO"))
@@ -48,13 +48,13 @@ class StockDataFetcher:
                 market = TW_CODES[base_code].market
                 return f"{base_code}.TW" if market == '上市' else f"{base_code}.TWO"
             return ticker
-        
+
         except Exception as e:
             logger.warning(f"處理 '{ticker}' 代碼失敗：{e}")
             return ticker
 
     def check_stock_exist(self) -> bool:
-        """快速校驗股票是否存在於資料庫"""
+        """確認股票是否存在於資料庫"""
         try:
             with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
@@ -66,7 +66,7 @@ class StockDataFetcher:
             return False
 
     def fetch_stock_name(self) -> str:
-        """從本地資料庫獲取股票名稱"""
+        """從本地資料庫查詢股票名稱"""
         try:
             with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
@@ -83,7 +83,7 @@ class StockDataFetcher:
             return self.ticker
 
     def fetch_historical_data(self, period: str = "12mo") -> pd.DataFrame:
-        """透過 SQLite 獲取歷史日線，並執行股價除權息正規化"""
+        """從 SQLite 查詢歷史日線資料，並套用除權息調整"""
         try:
             days_map = {
                 "1mo": 30, "3mo": 90, "6mo": 180, "12mo": 365,
@@ -94,7 +94,7 @@ class StockDataFetcher:
             cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
 
             query = '''
-                SELECT 
+                SELECT
                     date,
                     open_price AS Open,
                     high_price AS High,
@@ -119,23 +119,23 @@ class StockDataFetcher:
             if self.historical_data.empty:
                 logger.info(f"資料庫中無 '{self.ticker}' 的歷史資料...")
             else:
-                # 除權息校正機制：利用 (AdjClose / Close) 的比率回推真實的開高低價格，避免圖表出現不合理的跳空缺口
+                # 以 AdjClose/Close 比率回推開高低價，消除除權息造成的圖表跳空缺口
                 adj_ratio = self.historical_data['AdjClose'] / self.historical_data['Close']
                 self.historical_data['Open'] = self.historical_data['Open'] * adj_ratio
                 self.historical_data['High'] = self.historical_data['High'] * adj_ratio
                 self.historical_data['Low'] = self.historical_data['Low'] * adj_ratio
                 self.historical_data['Close'] = self.historical_data['AdjClose']
-                
+
                 logger.info(f"成功從資料庫查詢 '{self.ticker}' 的 {len(self.historical_data)} 筆歷史資料！")
-            
+
             return self.historical_data
-        
+
         except Exception as e:
             logger.error(f"'{self.ticker}' 歷史資料查詢失敗：{e}")
             return pd.DataFrame()
 
     def fetch_intraday_data(self) -> pd.DataFrame:
-        """呼叫 yfinance API 抓取 1 分鐘級別盤中分時資料"""
+        """透過 yfinance 取得當日 1 分鐘級盤中資料"""
         try:
             stock = yf.Ticker(self.ticker)
             data = stock.history(period="1d", interval="1m", actions=False)
@@ -144,11 +144,11 @@ class StockDataFetcher:
                 logger.warning(f"'{self.ticker}' 資料下載失敗...")
                 return data
             
-            # Drop 無關欄位
+            # 捨棄 Dividends / Stock Splits 等非 OHLCV 欄位
             core_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
             data = data[core_cols]
-            
-            # Data Cleaning: 移除 API 回傳的 NaN 資料
+
+            # 移除任何含有 NaN 的行
             self.intraday_data = data.dropna()
 
             if not self.intraday_data.empty:
@@ -161,8 +161,7 @@ class StockDataFetcher:
             return pd.DataFrame()
 
     def fetch_latest_time(self) -> pd.Timestamp:
-        """動態判斷資料的最新時間戳，並統一轉換為台北時區 (Asia/Taipei)"""
-        # 優先級：盤中資料 > 歷史資料 > 現在系統時間
+        """回傳最新資料時間戳 (Asia/Taipei)，優先序：盤中 > 歷史 > 系統時間"""
         if self.intraday_data is not None and not self.intraday_data.empty:
             latest_time = self.intraday_data.index[-1]
         elif self.historical_data is not None and not self.historical_data.empty:
@@ -170,14 +169,13 @@ class StockDataFetcher:
         else:
             latest_time = pd.Timestamp.now(tz=pytz.timezone('Asia/Taipei'))
 
-        # 確保有時區資訊
         if latest_time.tz is None:
             latest_time = latest_time.tz_localize('UTC')
 
         return latest_time.astimezone(pytz.timezone('Asia/Taipei'))
 
     def get_data_count(self) -> dict:
-        """資料庫狀態彙整，回傳該股票的資料跨度與總量"""
+        """回傳該股票在資料庫中的記錄數與日期範圍"""
         try:
             with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
@@ -199,7 +197,7 @@ class StockDataFetcher:
         return {"total_records": 0, "earliest_date": None, "latest_date": None}
 
     def _debug_info(self) -> dict:
-        """[開發者工具] 傾印此實例的基礎數據統計"""
+        """開發工具：傾印此實例的診斷資訊"""
         hist_data = self.fetch_historical_data()
         intra_data = self.fetch_intraday_data()
         data_count = self.get_data_count()
@@ -214,7 +212,6 @@ class StockDataFetcher:
             "盤中資料筆數": len(intra_data),
         }
 
-# debug test
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     while True:

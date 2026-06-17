@@ -7,14 +7,13 @@ from dotenv import load_dotenv
 import asyncio
 
 from src.data import StockDataFetcher
-from src.quant import TechnicalIdicator
+from src.quant import TechnicalIndicator
 from src.utils import StockVisualizer
 from src.bot import DiscordStockChart
 
-# 載入 .env 環境變數
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
-# 指定測試伺服器可加快 Discord 斜線指令同步速度 (Global Sync 需約 1 小時)
+# 指定測試伺服器 Guild 可加快指令同步；不設定則走 Global Sync（約 1 小時生效）
 GUILD_ID = os.getenv('GUILD')
 GUILD = discord.Object(id=int(GUILD_ID)) if GUILD_ID else None
 
@@ -26,11 +25,10 @@ if not TOKEN:
 if not GUILD:
     logger.warning("GUILD_ID not found in environment variables")
 
-# 初始化 Bot 實例並申請預設權限
+# Intents 決定 Bot 訂閱哪些 Gateway 事件，未宣告的事件不會被推送
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix='$', intents=intents)
 
-# 機器人上線通知
 @bot.event
 async def on_ready():
     if GUILD:
@@ -38,43 +36,38 @@ async def on_ready():
     await bot.tree.sync()
     logger.info(f"Discord Bot Login Identity --> {bot.user}")
 
-# 機器人離線通知
 @bot.event
 async def on_disconnect():
     logger.info("Discord Bot Disconnected...")
 
-# 機器人指令
 @bot.tree.command(name="stock", description="輸入股票代碼查詢資訊與圖表（若不是台股與美股請輸入完整後綴）")
 async def analyze_stock(interaction: discord.Interaction, ticker: str):
-    # 延遲回應，避免處理時間過長導致 Discord API 判定互動失敗
+    # defer() 避免處理超過 3 秒導致 Discord 判定互動逾時
     await interaction.response.defer()
 
     try:
         fetcher = StockDataFetcher(ticker)
-        # 使用 to_thread 讓同步 IO (SQLite 查詢) 在背景執行序池執行，避免阻塞 Event Loop
+        # asyncio.to_thread 將同步阻塞的 SQLite/yfinance 呼叫卸載至執行緒池，避免阻塞 Event Loop
         stock_name = await asyncio.to_thread(fetcher.fetch_stock_name)
         stock_ticker = fetcher.ticker
 
-        # 並發請求 (Concurrency)：同時抓取歷史資料與盤中資料，提升整體響應速度
+        # 並發請求提升響應速度
         history_data, intraday_data = await asyncio.gather(
             asyncio.to_thread(fetcher.fetch_historical_data),
             asyncio.to_thread(fetcher.fetch_intraday_data)
         )
-        
-        # Payload 完整性校驗
+
         if history_data.empty or intraday_data.empty:
             await interaction.followup.send(f"無法取得 `{stock_ticker}` 的股票資料...\n> 請確認輸入的股票代碼是否正確，或該股票尚未加入本系統資料庫")
             logger.warning(f"'{stock_ticker}' 資料取得失敗")
             return
-            
+
         latest_time = await asyncio.to_thread(fetcher.fetch_latest_time)
-        
-        # 背景執行技術指標運算
+
         snapshot = await asyncio.to_thread(
-            TechnicalIdicator.analyze, stock_ticker, stock_name, history_data, intraday_data, latest_time
+            TechnicalIndicator.analyze, stock_ticker, stock_name, history_data, intraday_data, latest_time
         )
 
-        # 並發渲染兩張圖表
         history_buffer, intraday_buffer = await asyncio.gather(
             asyncio.to_thread(StockVisualizer.generate_history_chart, stock_ticker, history_data),
             asyncio.to_thread(StockVisualizer.generate_intraday_chart, stock_ticker, intraday_data)
@@ -90,7 +83,6 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
         # 根據漲跌幅給定 Embed 的側邊飾條顏色 (紅漲、綠跌、灰平盤)
         color = 0xe74c3c if snapshot.change_percent > 0 else (0x2ecc71 if snapshot.change_percent < 0 else 0x676767)
         
-        # 構建資料展示 Payload
         embed = discord.Embed(
             title=f"📈 {snapshot.name} ({snapshot.ticker})",
             color=color,
@@ -101,10 +93,9 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
         embed.set_footer(text=f"資料時間: {snapshot.latest_time_str}   |   資料來源: Yahoo Finance")
         embed.set_image(url="attachment://chart.png")
 
-        # 實例化狀態保持元件 (View) 並將其綁定於輸出的 Message 上
         view = DiscordStockChart(stock_ticker, history_bytes, intraday_bytes)
         msg = await interaction.followup.send(embed=embed, file=file, view=view)
-        view.message = msg
+        view.message = msg  # 儲存 Message 參考，供 on_timeout 清理使用
 
         logger.info(f"'{stock_ticker}' 訊息輸出成功")
 

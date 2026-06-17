@@ -13,19 +13,18 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 def fetch_all_stocks(conn: sqlite3.Connection) -> list:
-    """掃描資料庫清單，抓出所有需要更新的股票 (ticker)"""
+    """回傳資料庫中所有股票代碼"""
     cursor = conn.cursor()
     cursor.execute("SELECT ticker FROM stocks")
     rows = cursor.fetchall()
     return [row[0] for row in rows]
 
 def update_stock_data():
-    """資料更新腳本：批次自 Yahoo Finance 獲取最近 5 天資料並透過 Upsert 更新回本地資料庫"""
+    """批次從 Yahoo Finance 下載最新股價並 Upsert 至本地資料庫"""
     logger.info("啟動股票每日資料更新...")
 
     try:
         with sqlite3.connect(DB_PATH) as conn:
-            # 開啟外鍵約束防護，避免寫入孤兒資料
             conn.execute("PRAGMA foreign_keys = ON")
             tickers = fetch_all_stocks(conn)
             total_stocks = len(tickers)
@@ -33,14 +32,14 @@ def update_stock_data():
 
             total_success = 0
             chunk_size = 100
-            
-            # 分割為 Chunk 進行批次請求，降低 Peak Memory 並防止遭 API 端 Rate Limit 封鎖
+
+            # 分批請求以降低記憶體峰值並避免觸發 API Rate Limit
             for i in range(0, total_stocks, chunk_size):
                 success_count = 0
                 chunk_tickers = tickers[i : i + chunk_size]
                 logger.info(f"正在更新批次 {i+1} ~ {min(i+chunk_size, total_stocks)}...")
-                
-                # 請求多天數據 (5d)，以規避假日、休市或時區差導致當日回傳空值的狀況
+
+                # 請求多天數據，規避假日、休市或時區差造成當日回傳空值
                 data = yf.download(
                     chunk_tickers, 
                     period="5d", 
@@ -57,7 +56,7 @@ def update_stock_data():
                         if len(chunk_tickers) == 1:
                             stock_data = data
                         else:
-                            # 校驗該股票是否存在 yf 回傳的 MultiIndex 欄位中
+                            # 單一股票時 yfinance 回傳扁平欄位；多股票時為 MultiIndex，需顯式選取
                             if ticker not in data.columns.levels[0]: # pyright: ignore[reportAttributeAccessIssue, reportOptionalMemberAccess]
                                 continue
                             stock_data = data[ticker] # pyright: ignore[reportOptionalSubscript]
@@ -67,7 +66,6 @@ def update_stock_data():
                             logger.warning(f"'{ticker}' 下載失敗或無有效最新數據...")
                             continue
                     
-                        # 使用 List Comprehension 構建批量寫入 (Batch Insert) 的 Data Payload
                         records = [
                             (
                                 ticker,
@@ -81,7 +79,7 @@ def update_stock_data():
                             ) for date, row in stock_data.iterrows()
                         ]
 
-                        # 使用 ON CONFLICT 達成更高效且不改變 ID 的 Upsert
+                        # ON CONFLICT Upsert：更新欄位值但保留原始 id，避免觸發 FK cascade
                         conn.cursor().executemany('''
                             INSERT INTO daily_prices
                             (ticker, date, open_price, high_price, low_price, close_price, adjust_close_price, volume)
@@ -104,7 +102,7 @@ def update_stock_data():
                     
                 conn.commit()
                 logger.info(f"批次寫入完成，成功填入 {success_count}/{len(chunk_tickers)} 檔的最新數據！")
-                # 請求間隔，禮貌性 Sleep 避免觸發 DDoS 防護
+                # 批次間限速，避免連續大量請求觸發 yfinance 封鎖
                 time.sleep(3)
                 
             logger.info(f"每日更新完成，共 {total_success}/{total_stocks} 檔股票成功寫入資料庫！")

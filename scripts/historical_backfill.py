@@ -47,7 +47,6 @@ def backfill_history(period: int):
                 chunk_tickers = tickers[i : i + chunk_size]
                 logger.info(f"正在下載批次 {i+1} ~ {min(i + chunk_size, total_stocks)} 檔數據...")
                 
-                # 調用 Yahoo Finance API 獲取長週期的全量歷史數據
                 data = yf.download(
                     chunk_tickers, 
                     period=f"{period}y", 
