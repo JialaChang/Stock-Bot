@@ -1,1 +1,1 @@
-from .indicator import TechnicalIndicator
+from .indicator import compute_indicators

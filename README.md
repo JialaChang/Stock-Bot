@@ -4,8 +4,8 @@
 ![Managed by uv](https://img.shields.io/badge/managed%20by-uv-purple)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Discord 股票查詢機器人，支援台股、美股與全球主要指數，提供技術分析指標（RSI、MA）與 K 線圖。
-希望未來能擴充成兼具指標與技術分析，並套用機器學習的量化交易專案
+Discord 股票查詢機器人，支援台股、美股與全球主要指數，提供技術分析指標（RSI、MA）與 K 線圖  
+希望未來能擴充成兼具指標與技術分析，並套用機器學習的量化交易專案  
 
 <div>
   <a href="https://discord.com/oauth2/authorize?client_id=1494994206425612399">
@@ -35,13 +35,13 @@ stock-bot/
 └── main.py           # 啟動入口
 ```
 
-### `/stock` 指令資料流
+### Discord `/stock` 指令資料流
 
 ```
 使用者輸入 ticker
     → StockDataFetcher._format_ticker()   # 補齊 .TW / .TWO 後綴
     → asyncio.gather()                    # 並發：SQLite 歷史資料 + yfinance 盤中資料
-    → TechnicalIndicator.analyze()        # 計算 RSI(14)、MA5/10/20、漲跌幅
+    → compute_indicators()                  # 計算 RSI(14)、MA5/10/20、漲跌幅
     → asyncio.gather()                    # 並發：生成歷史 K 線圖 + 盤中分時圖
     → DiscordStockChart View              # 回傳 Embed + 可切換按鈕（5 分鐘逾時）
 ```
@@ -65,7 +65,7 @@ uv sync
 cp .env.example .env
 ```
 
-`.env` 必填欄位：
+`.env` 變數欄位：
 
 | 變數 | 說明 |
 |------|------|
@@ -181,14 +181,14 @@ daily_prices (
 - **yfinance**：當日 1 分鐘盤中資料
 - **twstock**：台股代碼與市場別對照（上市 / 上櫃）
 
-### `TechnicalIndicator` (`src/quant/indicator.py`)
+### `compute_indicators` (`src/quant/indicator.py`)
 
 計算技術指標並封裝至 `StockSnapshot`：
 - **RSI(14)**：相對強弱指標，>70 超買，<30 超賣
 - **MA5 / MA10 / MA20**：簡單移動平均線
 - **漲跌幅**：以前一交易日收盤價為基準（而非歷史陣列的前一筆）
 
-### `StockVisualizer` (`src/utils/visualizer.py`)
+### `generate_history_chart` / `generate_intraday_chart` (`src/utils/visualizer.py`)
 
 生成 in-memory PNG 圖表：
 - **歷史日線圖**：K 線 + MA5/10/20 + 成交量

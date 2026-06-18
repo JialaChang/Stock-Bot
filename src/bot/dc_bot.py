@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 import asyncio
 
 from src.data import StockDataFetcher
-from src.quant import TechnicalIndicator
-from src.utils import StockVisualizer
+from src.quant import compute_indicators
+from src.utils import generate_history_chart, generate_intraday_chart
 from src.bot import DiscordStockChart
 
 load_dotenv()
@@ -65,12 +65,12 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
         latest_time = await asyncio.to_thread(fetcher.fetch_latest_time)
 
         snapshot = await asyncio.to_thread(
-            TechnicalIndicator.analyze, stock_ticker, stock_name, history_data, intraday_data, latest_time
+            compute_indicators, stock_ticker, stock_name, history_data, intraday_data, latest_time
         )
 
         history_buffer, intraday_buffer = await asyncio.gather(
-            asyncio.to_thread(StockVisualizer.generate_history_chart, stock_ticker, history_data),
-            asyncio.to_thread(StockVisualizer.generate_intraday_chart, stock_ticker, intraday_data)
+            asyncio.to_thread(generate_history_chart, stock_ticker, history_data),
+            asyncio.to_thread(generate_intraday_chart, stock_ticker, intraday_data)
         )
         history_bytes = history_buffer.getvalue()
         intraday_bytes = intraday_buffer.getvalue()

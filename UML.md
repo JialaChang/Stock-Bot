@@ -40,19 +40,21 @@ classDiagram
     %% --------------------------------
     %% 技術分析 (Quant)
     %% --------------------------------
-    class TechnicalIndicator {
-        <<Static Utility>>
-        +analyze(ticker, name, history_data, intraday_data, latest_time) StockSnapshot
+    class indicator {
+        <<Module: quant/indicator>>
+        +compute_indicators(ticker, name, history_data, intraday_data, latest_time) StockSnapshot
     }
+    note for indicator "計算指標並將指標欄位原地寫回 history_data"
 
     %% --------------------------------
     %% 視覺化渲染 (Utils)
     %% --------------------------------
-    class StockVisualizer {
-        <<Static Utility>>
+    class visualizer {
+        <<Module: utils/visualizer>>
         +generate_history_chart(ticker, data, days) BytesIO
         +generate_intraday_chart(ticker, data) BytesIO
     }
+    note for visualizer "generate_history_chart 需要 data 已由 indicator 寫入"
 
     %% --------------------------------
     %% Discord 機器人與 UI (Bot)
@@ -68,24 +70,40 @@ classDiagram
         +btn_toggle(interaction, button)
     }
 
-    class DiscordBot {
-        <<Module: dc_bot>>
+    class dc_bot {
+        <<Module: bot/dc_bot>>
+        +commands.Bot bot
+        +on_ready()
+        +on_disconnect()
         +analyze_stock(interaction, ticker)
+    }
+
+    %% --------------------------------
+    %% 資料庫操作 (Database)
+    %% --------------------------------
+    class database {
+        <<Module: database/database>>
+        +str DB_PATH
+        +init_database()
+        +insert_stock(ticker, name, market)
+        +delete_stock(ticker)
+        +get_stock(ticker) dict
+        +get_daily_prices(ticker, limit) list
     }
 
     %% --------------------------------
     %% 資料庫表 (Database Tables)
     %% --------------------------------
-    class Stocks {
+    class stocks {
         <<Database Table>>
         +ticker TEXT PK
         +name TEXT NOT NULL
         +market TEXT
     }
 
-    class DailyPrices {
+    class daily_prices {
         <<Database Table>>
-        +id INTEGER PK
+        +id INTEGER PK AUTOINCREMENT
         +ticker TEXT FK
         +date TEXT NOT NULL
         +open_price REAL
@@ -101,29 +119,39 @@ classDiagram
     %% --------------------------------
     class daily_updater {
         <<Script>>
+        +update_stock_data()
     }
 
     class historical_backfill {
         <<Script>>
+        +backfill_history(period)
     }
 
     class seed_stocks {
         <<Script>>
+        +import_taiwan_stocks(conn)
+        +import_us_stocks(conn)
+        +import_global_indices(conn)
     }
 
     %% 關聯性定義 (Relationships)
-    DiscordBot --> StockDataFetcher : 1. 抓取資料
-    DiscordBot --> TechnicalIndicator : 2. 指標運算
-    DiscordBot --> StockVisualizer : 3. 繪製圖表
-    DiscordBot --> DiscordStockChart : 4. 綁定按鈕與渲染
-    
-    TechnicalIndicator ..> StockSnapshot : 實例化回傳
-    
-    StockDataFetcher ..> Stocks : 讀取資料
-    StockDataFetcher ..> DailyPrices : 讀取資料
-    daily_updater ..> DailyPrices : 寫入
-    historical_backfill ..> DailyPrices : 寫入
-    seed_stocks ..> Stocks : 初始化
-    
-    DailyPrices --> Stocks : FK (ticker)
+    dc_bot --> StockDataFetcher : 1. 實例化
+    dc_bot --> indicator : 2. 計算指標
+    dc_bot --> visualizer : 3. 繪製圖表
+    dc_bot --> DiscordStockChart : 4. 實例化 View
+
+    indicator ..> StockSnapshot : 實例化回傳
+
+    StockDataFetcher ..> stocks : 讀取
+    StockDataFetcher ..> daily_prices : 讀取
+
+    database ..> stocks : 讀取與寫入
+    database ..> daily_prices : 讀取與寫入
+
+    daily_updater ..> daily_prices : 寫入
+    historical_backfill ..> daily_prices : 寫入
+    seed_stocks --> database : 呼叫 init_database()
+    seed_stocks ..> stocks : 寫入
+
+    daily_prices --> stocks : FK (ticker)
 ```

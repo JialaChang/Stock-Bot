@@ -1,1 +1,1 @@
-from .visualizer import StockVisualizer
+from .visualizer import generate_history_chart, generate_intraday_chart
