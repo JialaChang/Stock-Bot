@@ -95,7 +95,7 @@ python scripts/daily_updater.py
 
 ---
 
-## 指令說明
+## Discord 指令說明
 
 | 指令 | 說明 |
 |------|------|

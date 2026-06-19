@@ -145,8 +145,8 @@ classDiagram
     StockDataFetcher ..> stocks : 讀取
     StockDataFetcher ..> daily_prices : 讀取
 
-    database ..> stocks : 讀取與寫入
-    database ..> daily_prices : 讀取與寫入
+    database ..> stocks : CURD
+    database ..> daily_prices : CURD
 
     daily_updater ..> daily_prices : 寫入
     historical_backfill ..> daily_prices : 寫入
