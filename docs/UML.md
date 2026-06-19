@@ -45,7 +45,7 @@ classDiagram
         +compute_indicators(ticker, history_data) None
         +compute_indicators_for_discord(ticker, name, history_data, intraday_data, latest_time) StockSnapshot
     }
-    note for indicator "compute_indicators：回測用，全套指標原地寫入 DataFrame\ncompute_indicators_for_discord：Discord 展示用，回傳 StockSnapshot"
+    note for indicator "將指標寫進傳入的資料"
 
     %% --------------------------------
     %% 視覺化渲染 (Utils)
@@ -55,7 +55,7 @@ classDiagram
         +generate_history_chart(ticker, data, days) BytesIO
         +generate_intraday_chart(ticker, data) BytesIO
     }
-    note for visualizer "generate_history_chart 需要 data 已由 indicator 寫入"
+    note for visualizer "需要的指標已由 indicator 寫入"
 
     %% --------------------------------
     %% Discord 機器人與 UI (Bot)

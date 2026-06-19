@@ -18,7 +18,7 @@ _MPF_STYLE = mpf.make_mpf_style(marketcolors=_MARKET_COLORS, gridstyle='--')
 
 
 def generate_history_chart(ticker: str, data: pd.DataFrame, days: int = 61) -> io.BytesIO:
-    """生成歷史日線 K 線圖（含均線與成交量），回傳 in-memory PNG 供 Discord 上傳"""
+    """生成歷史日線 K 線圖（含均線與成交量），回傳 in-memory PNG"""
     plot_data = data.iloc[-days:]
 
     addplot = [

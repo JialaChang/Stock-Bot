@@ -1,7 +1,7 @@
 import sqlite3
 import os
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ def delete_stock(ticker: str) -> None:
         ''', (ticker,))
         connect.commit()
 
-def get_stock(ticker: str) -> Optional[Dict[str, Any]]:
+def get_stock(ticker: str) -> dict[str, Any] | None:
     """查詢單一股票資料"""
     with sqlite3.connect(DB_PATH) as connect:
         connect.row_factory = sqlite3.Row  # 讓查詢結果能像字典一樣透過欄位名稱取值
@@ -81,7 +81,7 @@ def get_stock(ticker: str) -> Optional[Dict[str, Any]]:
         row = cursor.fetchone()
         return dict(row) if row else None
 
-def get_daily_prices(ticker: str, limit: int = 30) -> List[Dict[str, Any]]:
+def get_daily_prices(ticker: str, limit: int = 30) -> list[dict[str, Any]]:
     """取得指定股票的歷史價格"""
     with sqlite3.connect(DB_PATH) as connect:
         connect.row_factory = sqlite3.Row

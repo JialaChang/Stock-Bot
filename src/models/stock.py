@@ -13,7 +13,7 @@ class StockSnapshot:
 
     @property
     def change_str(self) -> str:
-        """格式化漲跌幅，附帶漲跌符號 (∆ / ∇)"""
+        """格式化漲跌幅"""
         icon = '∆' if self.change_percent >= 0 else '∇'
         return f"{icon} {abs(self.change_percent):.2f}%"
 

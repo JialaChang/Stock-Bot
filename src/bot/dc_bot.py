@@ -85,4 +85,8 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    bot.run(TOKEN)
+    try:
+        logger.info("Starting Discord bot...")
+        bot.run(TOKEN)
+    except Exception as e:
+        logger.error(f"Discord bot Error : {e}")
