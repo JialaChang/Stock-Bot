@@ -1,15 +1,14 @@
 import discord
 from discord.ext import commands
 import os
-import io
 import logging
 from dotenv import load_dotenv
 import asyncio
 
 from src.data import StockDataFetcher
-from src.quant import compute_indicators
+from src.quant import compute_indicators_for_discord
 from src.utils import generate_history_chart, generate_intraday_chart
-from src.bot import DiscordStockChart
+from src.bot import send_stock_response
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -40,7 +39,7 @@ async def on_ready():
 async def on_disconnect():
     logger.info("Discord Bot Disconnected...")
 
-@bot.tree.command(name="stock", description="輸入股票代碼查詢資訊與圖表（若不是台股與美股請輸入完整後綴）")
+@bot.tree.command(name="stock", description="輸入股票代碼查詢資訊與圖表（僅支援台股美股與部份指數）")
 async def analyze_stock(interaction: discord.Interaction, ticker: str):
     # defer() 避免處理超過 3 秒導致 Discord 判定互動逾時
     await interaction.response.defer()
@@ -65,7 +64,7 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
         latest_time = await asyncio.to_thread(fetcher.fetch_latest_time)
 
         snapshot = await asyncio.to_thread(
-            compute_indicators, stock_ticker, stock_name, history_data, intraday_data, latest_time
+            compute_indicators_for_discord, stock_ticker, stock_name, history_data, intraday_data, latest_time
         )
 
         history_buffer, intraday_buffer = await asyncio.gather(
@@ -74,29 +73,10 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
         )
         history_bytes = history_buffer.getvalue()
         intraday_bytes = intraday_buffer.getvalue()
-        
         history_buffer.close()
         intraday_buffer.close()
 
-        file = discord.File(io.BytesIO(history_bytes), filename="chart.png")
-
-        # 根據漲跌幅給定 Embed 的側邊飾條顏色 (紅漲、綠跌、灰平盤)
-        color = 0xe74c3c if snapshot.change_percent > 0 else (0x2ecc71 if snapshot.change_percent < 0 else 0x676767)
-        
-        embed = discord.Embed(
-            title=f"📈 {snapshot.name} ({snapshot.ticker})",
-            color=color,
-        )
-        embed.add_field(name="價格", value=f"**{snapshot.current_price:.2f}**", inline=True)
-        embed.add_field(name="漲跌", value=f"**{snapshot.change_str}**", inline=True)
-        embed.add_field(name="RSI", value=f"**{snapshot.rsi_value:.2f}**", inline=True)
-        embed.set_footer(text=f"資料時間: {snapshot.latest_time_str}   |   資料來源: Yahoo Finance")
-        embed.set_image(url="attachment://chart.png")
-
-        view = DiscordStockChart(stock_ticker, history_bytes, intraday_bytes)
-        msg = await interaction.followup.send(embed=embed, file=file, view=view)
-        view.message = msg  # 儲存 Message 參考，供 on_timeout 清理使用
-
+        await send_stock_response(interaction, snapshot, history_bytes, intraday_bytes)
         logger.info(f"'{stock_ticker}' 訊息輸出成功")
 
     except Exception as e:

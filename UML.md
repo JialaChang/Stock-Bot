@@ -42,9 +42,10 @@ classDiagram
     %% --------------------------------
     class indicator {
         <<Module: quant/indicator>>
-        +compute_indicators(ticker, name, history_data, intraday_data, latest_time) StockSnapshot
+        +compute_indicators(ticker, history_data) None
+        +compute_indicators_for_discord(ticker, name, history_data, intraday_data, latest_time) StockSnapshot
     }
-    note for indicator "計算指標並將指標欄位原地寫回 history_data"
+    note for indicator "compute_indicators：回測用，全套指標原地寫入 DataFrame\ncompute_indicators_for_discord：Discord 展示用，回傳 StockSnapshot"
 
     %% --------------------------------
     %% 視覺化渲染 (Utils)
@@ -76,6 +77,11 @@ classDiagram
         +on_ready()
         +on_disconnect()
         +analyze_stock(interaction, ticker)
+    }
+
+    class dc_bot_view {
+        <<Module: bot/dc_bot_view>>
+        +send_stock_response(interaction, snapshot, history_bytes, intraday_bytes)
     }
 
     %% --------------------------------
@@ -136,11 +142,12 @@ classDiagram
 
     %% 關聯性定義 (Relationships)
     dc_bot --> StockDataFetcher : 1. 實例化
-    dc_bot --> indicator : 2. 計算指標
+    dc_bot --> indicator : 2. compute_indicators_for_discord()
     dc_bot --> visualizer : 3. 繪製圖表
-    dc_bot --> DiscordStockChart : 4. 實例化 View
+    dc_bot --> dc_bot_view : 4. send_stock_response()
+    dc_bot_view --> DiscordStockChart : 實例化 View
 
-    indicator ..> StockSnapshot : 實例化回傳
+    indicator ..> StockSnapshot : compute_indicators_for_discord 回傳
 
     StockDataFetcher ..> stocks : 讀取
     StockDataFetcher ..> daily_prices : 讀取

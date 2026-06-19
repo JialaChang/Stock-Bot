@@ -3,6 +3,8 @@ from discord.ui import Button, View
 import io
 import logging
 
+from src.models import StockSnapshot
+
 logger = logging.getLogger(__name__)
 
 class DiscordStockChart(View):
@@ -57,3 +59,20 @@ class DiscordStockChart(View):
         embed = interaction.message.embeds[0] # pyright: ignore[reportOptionalMemberAccess]
         embed.set_image(url=f"attachment://{filename}")
         await interaction.message.edit(embed=embed, attachments=[file], view=self) # pyright: ignore[reportOptionalMemberAccess]
+
+
+async def send_stock_response(interaction: discord.Interaction, snapshot: StockSnapshot, history_bytes: bytes, intraday_bytes: bytes) -> None:
+    """組建 Discord Embed 並將股票分析結果送出至頻道"""
+    color = 0xe74c3c if snapshot.change_percent > 0 else (0x2ecc71 if snapshot.change_percent < 0 else 0x676767)
+
+    embed = discord.Embed(title=f"📈 {snapshot.name} ({snapshot.ticker})", color=color)
+    embed.add_field(name="價格", value=f"**{snapshot.current_price:.2f}**", inline=True)
+    embed.add_field(name="漲跌", value=f"**{snapshot.change_str}**", inline=True)
+    embed.add_field(name="RSI", value=f"**{snapshot.rsi_value:.2f}**", inline=True)
+    embed.set_footer(text=f"資料時間: {snapshot.latest_time_str}   |   資料來源: Yahoo Finance")
+    embed.set_image(url="attachment://chart.png")
+
+    file = discord.File(io.BytesIO(history_bytes), filename="chart.png")
+    view = DiscordStockChart(snapshot.ticker, history_bytes, intraday_bytes)
+    msg = await interaction.followup.send(embed=embed, file=file, view=view)
+    view.message = msg  # 儲存 Message 參考，供 on_timeout 清理使用

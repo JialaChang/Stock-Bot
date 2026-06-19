@@ -41,8 +41,9 @@ stock-bot/
 使用者輸入 ticker
     → StockDataFetcher._format_ticker()   # 補齊 .TW / .TWO 後綴
     → asyncio.gather()                    # 並發：SQLite 歷史資料 + yfinance 盤中資料
-    → compute_indicators()                  # 計算 RSI(14)、MA5/10/20、漲跌幅
+    → compute_indicators_for_discord()      # 計算 RSI(14)、MA5/10/20、漲跌幅，回傳 StockSnapshot
     → asyncio.gather()                    # 並發：生成歷史 K 線圖 + 盤中分時圖
+    → send_stock_response()              # 組裝 Embed 並送出
     → DiscordStockChart View              # 回傳 Embed + 可切換按鈕（5 分鐘逾時）
 ```
 
@@ -181,12 +182,14 @@ daily_prices (
 - **yfinance**：當日 1 分鐘盤中資料
 - **twstock**：台股代碼與市場別對照（上市 / 上櫃）
 
-### `compute_indicators` (`src/quant/indicator.py`)
+### `compute_indicators` / `compute_indicators_for_discord` (`src/quant/indicator.py`)
 
-計算技術指標並封裝至 `StockSnapshot`：
-- **RSI(14)**：相對強弱指標，>70 超買，<30 超賣
-- **MA5 / MA10 / MA20**：簡單移動平均線
-- **漲跌幅**：以前一交易日收盤價為基準（而非歷史陣列的前一筆）
+兩個函式刻意分離，對應不同的使用情境：
+
+| 函式 | 用途 | 回傳 |
+|------|------|------|
+| `compute_indicators(ticker, history_data)` | 量化回測：將全套指標原地寫入 DataFrame | `None` |
+| `compute_indicators_for_discord(ticker, name, history_data, intraday_data, latest_time)` | Discord 展示：計算 Embed 所需的指標，整合盤中現價與漲跌幅，回傳資料載體 | `StockSnapshot` |
 
 ### `generate_history_chart` / `generate_intraday_chart` (`src/utils/visualizer.py`)
 

@@ -1,1 +1,1 @@
-from .indicator import compute_indicators
+from .indicator import compute_indicators, compute_indicators_for_discord
