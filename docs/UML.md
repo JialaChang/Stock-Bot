@@ -21,6 +21,30 @@ classDiagram
         +str latest_time_str
     }
 
+    class Trade {
+        <<Data Transfer Object>>
+        +str ticker
+        +date entry_date
+        +float entry_price
+        +date exit_date
+        +float exit_price
+        +int shares
+        +float profit_and_loss
+        +float return_on_investment
+        +bool is_profit
+    }
+
+    class BacktestResult {
+        <<Data Transfer Object>>
+        +str ticker
+        +list~Trade~ trades
+        +Series equity_curve
+        +float total_return
+        +float win_rate
+        +float max_drawdown
+        +int trade_count
+    }
+
     %% --------------------------------
     %% 資料擷取 (Data)
     %% --------------------------------
@@ -46,6 +70,13 @@ classDiagram
         +compute_indicators_for_discord(ticker, name, history_data, intraday_data, latest_time) StockSnapshot
     }
     note for indicator "將指標寫進傳入的資料"
+
+    class BacktestEngine {
+        +int capital
+        +run(ticker, data) BacktestResult
+        +strategy(row, position) str
+    }
+    note for BacktestEngine "strategy 回傳 BUY / SELL / HOLD"
 
     %% --------------------------------
     %% 視覺化渲染 (Utils)
@@ -141,13 +172,13 @@ classDiagram
     }
 
     %% 關聯性定義 (Relationships)
-    dc_bot --> StockDataFetcher : 1. 實例化
-    dc_bot --> indicator : 2. compute_indicators_for_discord()
-    dc_bot --> visualizer : 3. 繪製圖表
-    dc_bot --> dc_bot_view : 4. send_stock_response()
+    dc_bot --> StockDataFetcher : 實例化
+    dc_bot --> indicator : 計算指標
+    dc_bot --> visualizer : 繪製圖表
+    dc_bot --> dc_bot_view : 封裝 View 訊息物件
     dc_bot_view --> DiscordStockChart : 實例化 View
 
-    indicator ..> StockSnapshot : compute_indicators_for_discord 回傳
+    indicator ..> StockSnapshot : 回傳股票快照
 
     StockDataFetcher ..> stocks : 讀取
     StockDataFetcher ..> daily_prices : 讀取
@@ -157,8 +188,14 @@ classDiagram
 
     daily_updater ..> daily_prices : 寫入
     historical_backfill ..> daily_prices : 寫入
-    seed_stocks --> database : 呼叫 init_database()
+    seed_stocks --> database : 初始化
     seed_stocks ..> stocks : 寫入
 
     daily_prices --> stocks : FK (ticker)
+
+    BacktestEngine --> indicator : 計算指標
+    BacktestEngine --> StockDataFetcher : 取得歷史資料
+    BacktestEngine ..> Trade : 產生
+    BacktestEngine ..> BacktestResult : 回傳
+    BacktestResult --> Trade : 包含 list
 ```

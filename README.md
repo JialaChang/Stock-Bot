@@ -85,7 +85,17 @@ python scripts/historical_backfill.py  # 回補歷史 K 線（需一段時間）
 ### 啟動機器人
 
 ```bash
-python main.py
+python -m src.bot.dc_bot
+# or
+python src/bot/dc_bot.py
+```
+
+### 執行回測
+
+```bash
+python -m src.quant.backtest
+# or
+python src/quant/backtest.py
 ```
 
 ### 每日更新（建議使用工具排程）
@@ -188,8 +198,8 @@ daily_prices (
 
 | 函式 | 用途 | 回傳 |
 |------|------|------|
-| `compute_indicators(ticker, history_data)` | 量化回測：將全套指標原地寫入 DataFrame | `None` |
-| `compute_indicators_for_discord(ticker, name, history_data, intraday_data, latest_time)` | Discord 展示：計算 Embed 所需的指標，整合盤中現價與漲跌幅，回傳資料載體 | `StockSnapshot` |
+| `compute_indicators()` | 量化回測：將全套指標原地寫入 DataFrame | `None` |
+| `compute_indicators_for_discord()` | Discord 展示：計算 Embed 所需的指標，整合盤中現價與漲跌幅，回傳資料載體 | `StockSnapshot` |
 
 ### `generate_history_chart` / `generate_intraday_chart` (`src/utils/visualizer.py`)
 
@@ -200,3 +210,17 @@ daily_prices (
 ### `DiscordStockChart` (`src/bot/dc_bot_view.py`)
 
 持有圖表 bytes 的 Discord `View` 元件，提供按鈕切換日線圖 / 分時圖，逾時 5 分鐘自動清理。
+
+### `BacktestEngine` (`src/quant/backtest.py`)
+
+逐日迭代歷史 OHLCV 資料的回測引擎：
+- 呼叫 `compute_indicators()` 寫入全套指標後，逐根 K 棒詢問策略訊號（BUY / SELL / HOLD）
+- 追蹤持倉狀態與每日浮動資產淨值，出場時結算並記錄 `Trade`
+- 回傳 `BacktestResult`，包含交易明細、資產曲線、總報酬率、勝率、最大回撤
+
+### `Trade` / `BacktestResult` (`src/models/trade.py`)
+
+| 類別 | 說明 |
+|------|------|
+| `Trade` | 單筆交易紀錄：進出場日期、價格、股數，計算屬性含 `pnl`、`return_on_investment`、`is_profit` |
+| `BacktestResult` | 回測彙總：持有 `trades` 列表與 `equity_curve`，計算屬性含 `total_return`、`win_rate`、`max_drawdown` |
