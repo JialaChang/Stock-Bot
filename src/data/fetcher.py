@@ -1,5 +1,4 @@
-import sys
-import os
+import sys, os
 import yfinance as yf
 import pandas as pd
 import twstock

@@ -1,10 +1,11 @@
 import discord
 from discord.ext import commands
-import os
+import sys, os
 import logging
 from dotenv import load_dotenv
 import asyncio
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.data import StockDataFetcher
 from src.quant import compute_indicators_for_discord
 from src.utils import generate_history_chart, generate_intraday_chart

@@ -59,10 +59,10 @@ def compute_indicators(ticker: str, data: pd.DataFrame) -> None:
     # 觸碰下軌潛在反彈，觸碰上軌潛在回落
     # 帶寬收窄代表即將出現大波動
     bb_df = pta.bbands(close, length=20, std=2) # pyright: ignore[reportArgumentType, reportPrivateImportUsage]
-    data['BB_U'] = bb_df['BBU_20_2.0']
-    data['BB_M'] = bb_df['BBM_20_2.0']
-    data['BB_L'] = bb_df['BBL_20_2.0']
-    data['BB_W'] = bb_df['BBB_20_2.0']
+    data['BB_U'] = bb_df['BBU_20_2.0_2.0']
+    data['BB_M'] = bb_df['BBM_20_2.0_2.0']
+    data['BB_L'] = bb_df['BBL_20_2.0_2.0']
+    data['BB_W'] = bb_df['BBB_20_2.0_2.0']
 
 
 def compute_indicators_for_discord(ticker: str, name: str, history_data: pd.DataFrame, intraday_data: pd.DataFrame, latest_time) -> StockSnapshot:

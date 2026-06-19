@@ -1,5 +1,4 @@
-import sys
-import os
+import sys, os
 import sqlite3
 import twstock
 import pandas as pd
