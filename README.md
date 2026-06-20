@@ -8,11 +8,11 @@ Discord 股票查詢機器人，支援台股、美股與全球主要指數，提
 希望未來能擴充成兼具指標與技術分析，並套用機器學習的量化交易專案  
 
 <div>
+  <img src="./docs/image.png" width="300" alt="圖表頁面">
+
   <a href="https://discord.com/oauth2/authorize?client_id=1494994206425612399">
     <img src="https://img.shields.io/badge/邀請機器人到伺服器-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="邀請機器人">
   </a>
-
-  <img src="./docs/image.png" width="300" alt="圖表頁面">
 </div>
 
 ---
@@ -41,9 +41,9 @@ stock-bot/
 使用者輸入 ticker
     → StockDataFetcher._format_ticker()   # 補齊 .TW / .TWO 後綴
     → asyncio.gather()                    # 並發：SQLite 歷史資料 + yfinance 盤中資料
-    → compute_indicators_for_discord()      # 計算 RSI(14)、MA5/10/20、漲跌幅，回傳 StockSnapshot
+    → compute_indicators_for_discord()    # 計算 RSI(14)、MA5/10/20、漲跌幅，回傳 StockSnapshot
     → asyncio.gather()                    # 並發：生成歷史 K 線圖 + 盤中分時圖
-    → send_stock_response()              # 組裝 Embed 並送出
+    → send_stock_response()               # 組裝 Embed 並送出
     → DiscordStockChart View              # 回傳 Embed + 可切換按鈕（5 分鐘逾時）
 ```
 
@@ -214,13 +214,21 @@ daily_prices (
 ### `BacktestEngine` (`src/quant/backtest.py`)
 
 逐日迭代歷史 OHLCV 資料的回測引擎：
+- 初始化時接收一個 `Strategy` 實例，引擎與策略邏輯完全解耦
 - 呼叫 `compute_indicators()` 寫入全套指標後，逐根 K 棒詢問策略訊號（BUY / SELL / HOLD）
 - 追蹤持倉狀態與每日浮動資產淨值，出場時結算並記錄 `Trade`
 - 回傳 `BacktestResult`，包含交易明細、資產曲線、總報酬率、勝率、最大回撤
+
+### `Strategy` (`src/quant/strategy.py`)
+
+| 類別 | 說明 |
+|------|------|
+| `Strategy` | 抽象基底類別，定義 `signal(row, position) -> str` 介面 |
+| `RSIStrategy` | RSI 策略實作：RSI < 30 買入、RSI > 70 賣出 |
 
 ### `Trade` / `BacktestResult` (`src/models/trade.py`)
 
 | 類別 | 說明 |
 |------|------|
-| `Trade` | 單筆交易紀錄：進出場日期、價格、股數，計算屬性含 `pnl`、`return_on_investment`、`is_profit` |
+| `Trade` | 單筆交易紀錄：進出場日期、價格、股數，計算屬性含 `profit_and_loss`、`return_on_investment`、`is_profit` |
 | `BacktestResult` | 回測彙總：持有 `trades` 列表與 `equity_curve`，計算屬性含 `total_return`、`win_rate`、`max_drawdown` |

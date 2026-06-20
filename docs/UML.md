@@ -71,12 +71,20 @@ classDiagram
     }
     note for indicator "將指標寫進傳入的資料"
 
+    class Strategy {
+        <<Abstract>>
+        +signal(row, position) str
+    }
+
+    class RSIStrategy {
+        +signal(row, position) str
+    }
+
     class BacktestEngine {
+        +Strategy strategy
         +int capital
         +run(ticker, data) BacktestResult
-        +strategy(row, position) str
     }
-    note for BacktestEngine "strategy 回傳 BUY / SELL / HOLD"
 
     %% --------------------------------
     %% 視覺化渲染 (Utils)
@@ -193,6 +201,8 @@ classDiagram
 
     daily_prices --> stocks : FK (ticker)
 
+    RSIStrategy --|> Strategy : 繼承
+    BacktestEngine --> Strategy : 持有
     BacktestEngine --> indicator : 計算指標
     BacktestEngine --> StockDataFetcher : 取得歷史資料
     BacktestEngine ..> Trade : 產生
