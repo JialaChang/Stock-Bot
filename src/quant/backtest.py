@@ -2,7 +2,7 @@ import pandas as pd
 import sys, os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from src.models import BacktestResult, Trade
+from src.models import BacktestResult, Trade, Position
 from src.quant import compute_indicators, RSIStrategy
 
 initial_capital = 1_000_000
@@ -16,28 +16,34 @@ class BacktestEngine:
         """逐日迭代歷史資料進行回測"""
         compute_indicators(ticker, data)
 
-        position = None  # 持倉日期與價格
-        trades = []
-        equity = []
+        position: Position | None = None
+        trades: list[Trade] = []
+        equity: list[float] = []
 
         for date, row in data.iterrows():
+            date = pd.Timestamp(date) # pyright: ignore[reportArgumentType]
+            price_now = row['Close']
+
             if position is None:
                 equity.append(self.capital)
             else:
-                equity.append(self.capital * (row['Close'] / position[1]))  # 浮動損益
+                equity.append(self.capital * (price_now / position.entry_price))  # 浮動損益
 
             signal = self.strategy.signal(row, position)
 
-            if signal == "BUY" and position is None:
-                position = (date.date(), row['Close']) # pyright: ignore[reportAttributeAccessIssue]
+            if signal.action == "BUY" and position is None:
+                position = Position(date.date(), price_now, signal)
 
-            elif signal == "SELL" and position is not None:
-                self.capital *= row['Close'] / position[1]  # 出場後更新資金
-                trade = Trade(ticker, position[0], position[1], date.date(), row['Close']) # pyright: ignore[reportAttributeAccessIssue]
+            elif signal.action == "SELL" and position is not None:
+                self.capital *= price_now / position.entry_price  # 出場後更新資金
+                trade = Trade(ticker,
+                              position.entry_date, position.entry_price,
+                              date.date(), price_now,
+                              position.entry_signal, signal)
                 trades.append(trade)
                 position = None
 
-            elif signal == "HOLD":
+            elif signal.action == "HOLD":
                 ...
         
         equity_curve = pd.Series(equity, index=data.index)
@@ -51,6 +57,12 @@ if __name__ == "__main__":
     data = fetcher.fetch_historical_data(period="10y")
     engine = BacktestEngine()
     result = engine.run(ticker, data)
+    
+    for trade in result.trades:
+        print(f"買入 {trade.entry_date} @{trade.entry_price:.2f}  條件:{trade.entry_signal.conditions}  指標:{trade.entry_signal.values}")
+        print(f"賣出 {trade.exit_date} @{trade.exit_price:.2f}  條件:{trade.exit_signal.conditions}  指標:{trade.exit_signal.values}")
+        print(f"報酬率:{trade.return_on_investment:.2f}%")
+        print("---")
 
     print(f"總報酬率：{result.total_return:.2f}%")
     print(f"勝率：{result.win_rate:.2f}%")

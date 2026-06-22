@@ -21,6 +21,20 @@ classDiagram
         +str latest_time_str
     }
 
+    class Signal {
+        <<Data Transfer Object>>
+        +Literal action
+        +dict~str_bool~ conditions
+        +dict~str_float~ values
+    }
+
+    class Position {
+        <<Data Transfer Object>>
+        +date entry_date
+        +float entry_price
+        +Signal entry_signal
+    }
+
     class Trade {
         <<Data Transfer Object>>
         +str ticker
@@ -28,6 +42,8 @@ classDiagram
         +float entry_price
         +date exit_date
         +float exit_price
+        +Signal entry_signal
+        +Signal exit_signal
         +int shares
         +float profit_and_loss
         +float return_on_investment
@@ -73,11 +89,11 @@ classDiagram
 
     class Strategy {
         <<Abstract>>
-        +signal(row, position) str
+        +signal(row, position) Signal
     }
 
     class RSIStrategy {
-        +signal(row, position) str
+        +signal(row, position) Signal
     }
 
     class BacktestEngine {
@@ -202,10 +218,14 @@ classDiagram
     daily_prices --> stocks : FK (ticker)
 
     RSIStrategy --|> Strategy : 繼承
+    Strategy ..> Signal : 回傳
     BacktestEngine --> Strategy : 持有
     BacktestEngine --> indicator : 計算指標
     BacktestEngine --> StockDataFetcher : 取得歷史資料
+    BacktestEngine ..> Position : 持倉追蹤
     BacktestEngine ..> Trade : 產生
     BacktestEngine ..> BacktestResult : 回傳
     BacktestResult --> Trade : 包含 list
+    Trade --> Signal : 包含 entry/exit
+    Position --> Signal : 包含 entry
 ```

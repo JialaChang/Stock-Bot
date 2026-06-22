@@ -102,7 +102,7 @@ def _menu_init_database():
 def _menu_insert_stock():
     ticker = input("請輸入股票代號（如 2330.TW）: ").strip()
     name   = input("請輸入股票名稱: ").strip()
-    market = input("請輸入市場（如 TW / TWO / US）: ").strip()
+    market = input("請輸入市場（TW / TWO / US / INDEX）: ").strip()
     insert_stock(ticker, name, market)
     print(f"已新增/更新：{ticker} {name}")
 
@@ -111,9 +111,9 @@ def _menu_delete_stock():
     confirm = input(f"確定要刪除 {ticker} 及其所有歷史價格？(y/N) ").strip().lower()
     if confirm == 'y':
         delete_stock(ticker)
-        print(f"已刪除 {ticker}。")
+        print(f"已刪除 {ticker}！")
     else:
-        print("已取消。")
+        print("已取消...")
 
 def _menu_get_stock():
     ticker = input("請輸入股票代號: ").strip()
@@ -123,7 +123,7 @@ def _menu_get_stock():
         for key, value in info.items():
             print(f"  {key:<8} : {value}")
     else:
-        print(f"找不到 {ticker}。")
+        print(f"查無 {ticker} 的基本資料...")
 
 def _menu_get_prices():
     ticker = input("請輸入股票代號: ").strip()
@@ -142,14 +142,14 @@ def _menu_get_prices():
             vol     = p.get('volume')      or 'N/A'
             print(f"{p['date']:<12} | {str(f'{open_p:.2f}'):>8} | {str(f'{close_p:.2f}'):>8} | {str(f'{vol:.0f}'):>12}")
     else:
-        print(f"找不到 {ticker} 的價格資料。")
+        print(f"查無 {ticker} 的價格資料...")
 
 _MENU = [
-    ("初始化資料庫",          _menu_init_database),
+    ("初始化資料庫", _menu_init_database),
     ("新增 / 更新股票基本資料", _menu_insert_stock),
-    ("刪除股票",              _menu_delete_stock),
-    ("查詢股票基本資料",       _menu_get_stock),
-    ("查詢歷史價格",           _menu_get_prices),
+    ("刪除股票", _menu_delete_stock),
+    ("查詢股票基本資料", _menu_get_stock),
+    ("查詢歷史價格", _menu_get_prices),
 ]
 
 if __name__ == "__main__":
@@ -160,7 +160,7 @@ if __name__ == "__main__":
         for i, (label, _) in enumerate(_MENU, start=1):
             print(f"  {i}. {label}")
         print("  0. 離開")
-        print("====================================")
+        print("====================================J")
 
         choice = input("請選擇功能: ").strip()
         if choice == "0":
@@ -170,4 +170,4 @@ if __name__ == "__main__":
             print()
             _MENU[int(choice) - 1][1]()
         else:
-            print("無效的選項，請重新輸入。")
+            print("無效的選項，請重新輸入...")

@@ -1,6 +1,22 @@
 from dataclasses import dataclass
 from datetime import date
 import pandas as pd
+from typing import Literal
+
+
+@dataclass
+class Signal:
+    """買賣訊號以及策略紀錄"""
+    action: Literal["BUY", "SELL", "HOLD"]
+    conditions: dict[str, bool]  # 子條件是否成立
+    values: dict[str, float]     # 觸發時的指標數值
+
+@dataclass
+class Position:
+    """單次買賣的位置以及訊號"""
+    entry_date: date
+    entry_price: float
+    entry_signal: Signal
 
 @dataclass
 class Trade:
@@ -10,6 +26,8 @@ class Trade:
     entry_price: float
     exit_date: date
     exit_price: float
+    entry_signal: Signal
+    exit_signal: Signal
     shares: int = 1  # 買賣股數
 
     @property
@@ -19,11 +37,12 @@ class Trade:
     @property
     def return_on_investment(self) -> float:
         return (self.exit_price - self.entry_price) / self.entry_price * 100
-    
+
     @property
     def is_profit(self) -> bool:
         return self.profit_and_loss > 0
-    
+
+
 @dataclass
 class BacktestResult:
     """一次完整回測的彙總結果"""
@@ -36,18 +55,18 @@ class BacktestResult:
         first = self.equity_curve.iloc[0]
         last = self.equity_curve.iloc[-1]
         return (last - first) / first * 100
-    
+
     @property
     def win_rate(self) -> float:
         if not self.trades: return 0.0
         return sum(t.is_profit for t in self.trades) / len(self.trades) * 100
-    
+
     @property
     def max_drawdown(self) -> float:
         peak = self.equity_curve.cummax()
         drawdown = (self.equity_curve - peak) / peak * 100
         return drawdown.min()
-    
+
     @property
     def trade_count(self) -> int:
         return len(self.trades)

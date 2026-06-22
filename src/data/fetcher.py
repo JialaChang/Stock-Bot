@@ -196,7 +196,6 @@ class StockDataFetcher:
         return {"total_records": 0, "earliest_date": None, "latest_date": None}
 
     def _debug_info(self) -> dict:
-        """開發工具：傾印此實例的診斷資訊"""
         hist_data = self.fetch_historical_data()
         intra_data = self.fetch_intraday_data()
         data_count = self.get_data_count()
