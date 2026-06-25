@@ -213,7 +213,8 @@ python src/database/database.py
 
 逐日迭代歷史 OHLCV 資料的回測引擎：
 - 初始化時接收一個 `Strategy` 實例，引擎與策略邏輯完全解耦
-- 呼叫 `compute_indicators()` 寫入全套指標後，逐根 K 棒詢問策略訊號（BUY / SELL / HOLD）
+- 呼叫 `compute_indicators()` 寫入全套指標後，逐根 K 棒詢問策略訊號（ENTER_LONG / EXIT_LONG / ENTER_SHORT / EXIT_SHORT / HOLD）
+- 支援做多與做空：透過 `cumulative_multiplier` 追蹤累積收益倍率，避免複利誤差，引入止損機制（虧損 10% 自動平倉）
 - 追蹤持倉狀態與每日浮動資產淨值，出場時結算並記錄 `Trade`
 - 回傳 `BacktestResult`，包含交易明細、資產曲線、總報酬率、勝率、最大回撤
 
@@ -222,13 +223,13 @@ python src/database/database.py
 | 類別 | 說明 |
 |------|------|
 | `Strategy` | 抽象基底類別，回傳含觸發條件與指標數值的 `Signal` |
-| `RSIStrategy` | RSI 策略實作：RSI < 30 買入、RSI > 70 賣出 |
+| `RSIStrategy` | RSI 策略實作 |
 
 ### `Signal` / `Position` / `Trade` / `BacktestResult` (`src/models/trade.py`)
 
 | 類別 | 說明 |
 |------|------|
-| `Signal` | 策略訊號載體：`action`（BUY/SELL/HOLD）、`conditions`（各子條件是否成立）、`values`（觸發時的指標快照） |
-| `Position` | 持倉中的進場快照：進場日期、價格、進場 Signal，供引擎計算浮動損益與建立 Trade |
-| `Trade` | 單筆交易紀錄：進出場日期、價格、股數及進出場訊號，計算屬性含 `profit_and_loss`、`return_on_investment`、`is_profit` |
+| `Signal` | 策略訊號載體：`action`（ENTER_LONG / EXIT_LONG / ENTER_SHORT / EXIT_SHORT / HOLD）、`conditions`（各子條件是否成立）、`values`（觸發時的指標快照） |
+| `Position` | 持倉中的進場快照：進場日期、價格、進場 Signal、倉位方向（LONG/SHORT），供引擎計算浮動損益與建立 Trade；方法 `unrealized_pnl_ratio()` 回傳當前浮動損益倍率 |
+| `Trade` | 單筆交易紀錄：進出場日期、價格、股數、倉位方向、進出場訊號，計算屬性含 `profit_and_loss`、`return_on_investment`、`is_profit` |
 | `BacktestResult` | 回測彙總：持有 `trades` 列表與 `equity_curve`，計算屬性含 `total_return`、`win_rate`、`max_drawdown` |

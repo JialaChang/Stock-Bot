@@ -1,24 +1,25 @@
 from abc import ABC, abstractmethod
-from src.models import Signal
+from pandas import Series
+from src.models import Signal, Position
 
 class Strategy(ABC):
     @abstractmethod
-    def signal(self, row, position) -> Signal:
+    def signal(self, row: Series, position: Position | None) -> Signal:
         ...
 
 class RSIStrategy(Strategy):
-    def signal(self, row, position) -> Signal:
+    def signal(self, row: Series, position: Position | None) -> Signal:
         rsi = float(row['RSI'])
-        if position is None and rsi < 30:
-            return Signal(
-                "BUY",
-                {"rsi_oversold": True},
-                {"RSI": rsi}
-            )
-        if position is not None and rsi > 70:
-            return Signal(
-                "SELL",
-                {"rsi_overbought": True},
-                {"RSI": rsi}
-            )
+
+        # Long
+        if position is None and rsi < 40:
+            return Signal("ENTER_LONG", {"rsi_oversold": True}, {"RSI": rsi})
+        if position is not None and position.side == "LONG" and rsi > 70:
+            return Signal("EXIT_LONG", {"rsi_overbought": True}, {"RSI": rsi})
+        # Short
+        if position is None and rsi > 75:
+            return Signal("ENTER_SHORT", {"rsi_overbought": True}, {"RSI": rsi})
+        if position is not None and position.side == "SHORT" and rsi < 50:
+            return Signal("EXIT_SHORT", {"rsi_oversold": True}, {"RSI": rsi})
+        
         return Signal("HOLD", {}, {"RSI": rsi})

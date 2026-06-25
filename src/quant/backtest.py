@@ -2,69 +2,114 @@ import pandas as pd
 import sys, os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from src.models import BacktestResult, Trade, Position
+from src.models import BacktestResult, Trade, Position, Signal
 from src.quant import compute_indicators, RSIStrategy
 
-initial_capital = 1_000_000
+initial_capital = 100_000
 
 class BacktestEngine:
     def __init__(self) -> None:
         self.strategy = RSIStrategy()
-        self.capital = initial_capital
+        self.cumulative_multiplier = 1.0
+        self.position: Position | None = None
+        self.trades: list[Trade] = []
+        self.equity: list[float] = []
 
     def run(self, ticker: str, data: pd.DataFrame) -> BacktestResult:
         """逐日迭代歷史資料進行回測"""
         compute_indicators(ticker, data)
-
-        position: Position | None = None
-        trades: list[Trade] = []
-        equity: list[float] = []
+        data = data.dropna()  # 避免指標數值缺失
 
         for date, row in data.iterrows():
             date = pd.Timestamp(date) # pyright: ignore[reportArgumentType]
             price_now = row['Close']
 
-            if position is None:
-                equity.append(self.capital)
-            else:
-                equity.append(self.capital * (price_now / position.entry_price))  # 浮動損益
+            # 浮動損益
+            pnl_ratio = self.position.unrealized_pnl_ratio(price_now) if self.position else 1.0
+            self.equity.append(initial_capital * self.cumulative_multiplier * pnl_ratio)
 
-            signal = self.strategy.signal(row, position)
+            signal = self.strategy.signal(row, self.position)
 
-            if signal.action == "BUY" and position is None:
-                position = Position(date.date(), price_now, signal)
+            # 止損平倉
+            if self.position is not None and pnl_ratio < 0.9:  # 10% 虧損
+                signal = Signal(
+                    "EXIT_LONG" if self.position.side == "LONG" else "EXIT_SHORT",
+                    {"stop_loss": True},
+                    {"pnl_ratio": float(pnl_ratio)}
+                )
 
-            elif signal.action == "SELL" and position is not None:
-                self.capital *= price_now / position.entry_price  # 出場後更新資金
+            if signal.action == "ENTER_LONG" and self.position is None:
+                self.position = Position(date.date(), price_now, signal, side="LONG")
+
+            elif signal.action == "EXIT_LONG" and self.position is not None and self.position.side == "LONG":
+                self.cumulative_multiplier *= price_now / self.position.entry_price
                 trade = Trade(ticker,
-                              position.entry_date, position.entry_price,
+                              self.position.entry_date, self.position.entry_price,
                               date.date(), price_now,
-                              position.entry_signal, signal)
-                trades.append(trade)
-                position = None
+                              self.position.entry_signal, signal,
+                              "LONG")
+                self.trades.append(trade)
+                self.position = None
 
+            elif signal.action == "ENTER_SHORT" and self.position is None:
+                self.position = Position(date.date(), price_now, signal, side="SHORT")
+
+            elif signal.action == "EXIT_SHORT" and self.position is not None and self.position.side == "SHORT":
+                self.cumulative_multiplier *= 2 - price_now / self.position.entry_price
+                trade = Trade(ticker,
+                              self.position.entry_date, self.position.entry_price,
+                              date.date(), price_now,
+                              self.position.entry_signal, signal,
+                              "SHORT")
+                self.trades.append(trade)
+                self.position = None
+            
             elif signal.action == "HOLD":
-                ...
+                pass
         
-        equity_curve = pd.Series(equity, index=data.index)
-        return BacktestResult(ticker, trades, equity_curve)
+        equity_curve = pd.Series(self.equity, index=data.index)
+        return BacktestResult(ticker, self.trades, equity_curve)
     
+    def print_backtest_result(self, result: BacktestResult) -> None:
+        """輸出回測結果"""
+        for trade in result.trades:
+            print("-" * 50)
+            if trade.side == "LONG":
+                print("LONG:")
+                print(f"買入 {trade.entry_date} @{trade.entry_price:.2f}  條件:{trade.entry_signal.conditions}  指標:{trade.entry_signal.values}")
+                print(f"賣出 {trade.exit_date} @{trade.exit_price:.2f}  條件:{trade.exit_signal.conditions}  指標:{trade.exit_signal.values}")
+                print(f"報酬率: {trade.return_on_investment:.2f}%")
+            else:
+                print("SHORT:")
+                print(f"賣出 {trade.entry_date} @{trade.entry_price:.2f}  條件:{trade.entry_signal.conditions}  指標:{trade.entry_signal.values}")
+                print(f"買入 {trade.exit_date} @{trade.exit_price:.2f}  條件:{trade.exit_signal.conditions}  指標:{trade.exit_signal.values}")
+                print(f"報酬率: {trade.return_on_investment:.2f}%")
+
+        print("=" * 50)
+        print(f"總報酬率：{result.total_return:.2f}%")
+        print(f"勝率：{result.win_rate:.2f}%")
+        print(f"最大回撤：{result.max_drawdown:.2f}%")
+        print(f"交易次數：{result.trade_count}")
+        print(f"初始資金: {result.equity_curve.iloc[0]:.2f}")
+        print(f"最後資金: {result.equity_curve.iloc[-1]:.2f}")
+        print(f"equity_curve 最小值: {result.equity_curve.min():.2f}")
+        print(f"equity_curve 最大值: {result.equity_curve.max():.2f}")
+        print("=" * 50)
+
+
+
 if __name__ == "__main__":
     from src.data import StockDataFetcher
     from src.database import get_stock
     ticker = "2330.TW"
     fetcher = StockDataFetcher(ticker)
-    data = fetcher.fetch_historical_data(period="10y")
+    data = fetcher.fetch_historical_data(period="5y")
     engine = BacktestEngine()
     result = engine.run(ticker, data)
-    
-    for trade in result.trades:
-        print(f"買入 {trade.entry_date} @{trade.entry_price:.2f}  條件:{trade.entry_signal.conditions}  指標:{trade.entry_signal.values}")
-        print(f"賣出 {trade.exit_date} @{trade.exit_price:.2f}  條件:{trade.exit_signal.conditions}  指標:{trade.exit_signal.values}")
-        print(f"報酬率:{trade.return_on_investment:.2f}%")
-        print("---")
+    engine.print_backtest_result(result)
 
-    print(f"總報酬率：{result.total_return:.2f}%")
-    print(f"勝率：{result.win_rate:.2f}%")
-    print(f"最大回撤：{result.max_drawdown:.2f}%")
-    print(f"交易次數：{result.trade_count}")
+    if engine.position is not None:
+        print(f"警告：有未平倉的 {engine.position.side} 倉位！")
+        print(f"進場價：{engine.position.entry_price}")
+        print(f"date: {engine.position.entry_date}")
+

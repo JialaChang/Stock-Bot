@@ -23,7 +23,7 @@ classDiagram
 
     class Signal {
         <<Data Transfer Object>>
-        +Literal action
+        +Literal action: ENTER_LONG|EXIT_LONG|ENTER_SHORT|EXIT_SHORT|HOLD
         +dict~str_bool~ conditions
         +dict~str_float~ values
     }
@@ -33,6 +33,8 @@ classDiagram
         +date entry_date
         +float entry_price
         +Signal entry_signal
+        +Literal side: LONG|SHORT
+        +unrealized_pnl_ratio(price_now) float
     }
 
     class Trade {
@@ -44,6 +46,7 @@ classDiagram
         +float exit_price
         +Signal entry_signal
         +Signal exit_signal
+        +Literal side: LONG|SHORT
         +int shares
         +float profit_and_loss
         +float return_on_investment
@@ -98,8 +101,12 @@ classDiagram
 
     class BacktestEngine {
         +Strategy strategy
-        +int capital
+        +float cumulative_multiplier
+        +Position position
+        +list~Trade~ trades
+        +list~float~ equity
         +run(ticker, data) BacktestResult
+        +print_backtest_result(result) None
     }
 
     %% --------------------------------

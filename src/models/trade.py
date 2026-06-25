@@ -7,7 +7,7 @@ from typing import Literal
 @dataclass
 class Signal:
     """買賣訊號以及策略紀錄"""
-    action: Literal["BUY", "SELL", "HOLD"]
+    action: Literal["ENTER_LONG", "EXIT_LONG", "ENTER_SHORT", "EXIT_SHORT", "HOLD"]
     conditions: dict[str, bool]  # 子條件是否成立
     values: dict[str, float]     # 觸發時的指標數值
 
@@ -17,6 +17,15 @@ class Position:
     entry_date: date
     entry_price: float
     entry_signal: Signal
+    side: Literal["LONG", "SHORT"]
+    
+    def unrealized_pnl_ratio(self, price_now: float) -> float:
+        if self.side == "LONG":
+            return price_now / self.entry_price
+        else:  # SHORT
+            return 2 - price_now / self.entry_price
+                #  = 1 + (entry_price - price_now) / entry_price
+
 
 @dataclass
 class Trade:
@@ -28,15 +37,22 @@ class Trade:
     exit_price: float
     entry_signal: Signal
     exit_signal: Signal
+    side: Literal["LONG", "SHORT"]
     shares: int = 1  # 買賣股數
 
     @property
     def profit_and_loss(self) -> float:
-        return (self.exit_price - self.entry_price) * self.shares
-
+        if self.side == "LONG":
+            return (self.exit_price - self.entry_price) * self.shares
+        else:
+            return (self.entry_price - self.exit_price) * self.shares
+    
     @property
     def return_on_investment(self) -> float:
-        return (self.exit_price - self.entry_price) / self.entry_price * 100
+        if self.side == "LONG":
+            return (self.exit_price / self.entry_price - 1) * 100
+        else:
+            return (1 - self.exit_price / self.entry_price) * 100
 
     @property
     def is_profit(self) -> bool:
