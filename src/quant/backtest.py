@@ -3,14 +3,14 @@ import sys, os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.models import BacktestResult, Trade, Position, Signal
-from src.quant import compute_indicators, RSIStrategy
+from src.quant import compute_indicators, RSIStrategy, EMAStrategy
 
 INITIAL_CAPITAL = 100_000
 STOP_LOSS = 0.15
 
 class BacktestEngine:
     def __init__(self) -> None:
-        self.strategy = RSIStrategy()
+        self.strategy = EMAStrategy()
         self.cumulative_multiplier = 1.0  # 複利乘數
         self.position: Position | None = None
         self.trades: list[Trade] = []
@@ -24,8 +24,8 @@ class BacktestEngine:
         self.equity = []
         signal = Signal("HOLD", {}, {})
 
-        compute_indicators(ticker, data)
-        data = data.dropna()  # 避免指標數值缺失
+        compute_indicators(ticker, data, self.strategy.required_columns)
+        data = data.dropna(subset=self.strategy.required_columns)
 
         for date, row in data.iterrows():
             date = pd.Timestamp(date) # pyright: ignore[reportArgumentType]
@@ -153,11 +153,61 @@ class BacktestEngine:
 
 
 if __name__ == "__main__":
+    import logging
     from src.data import StockDataFetcher
-    from src.database import get_stock
-    ticker = "AAPL"
-    fetcher = StockDataFetcher(ticker)
-    data = fetcher.fetch_historical_data(period="5y")
+    from src.quant import RSIStrategy, EMAStrategy
+
+    logging.basicConfig(level=logging.WARNING)
+
+    STRATEGIES = {
+        "1": ("RSI", RSIStrategy),
+        "2": ("EMA", EMAStrategy),
+    }
+    VALID_PERIODS = ["1mo", "3mo", "6mo", "1y", "2y", "3y", "5y", "10y", "max"]
+
     engine = BacktestEngine()
-    result = engine.run(ticker, data)
-    engine.print_backtest_result(result)
+
+    while True:
+        print("-" * 50)
+        while True:
+            ticker = input("╎ 請輸入股票代號 (-1 結束)： ").strip()
+            if ticker == "-1":
+                break
+            fetcher = StockDataFetcher(ticker)
+            if fetcher.check_stock_exist():
+                break
+            print(f"╎ 找不到股票 '{ticker}'，請確認代碼是否正確...")
+        if ticker == "-1":
+            break
+
+        ticker = fetcher.ticker
+        name = fetcher.fetch_stock_name()
+        print(f"╎ 股票代號：{ticker}")
+        print(f"╎ 股票名稱：{name}")
+
+        print("-" * 50)
+        while True:
+            strategy_input = input("╎ 請選擇策略 [1=RSI, 2=EMA]: ").strip()
+            if strategy_input in STRATEGIES:
+                break
+            print(f"╎ 無效輸入，請重新輸入...")
+        strategy_label, strategy_cls = STRATEGIES[strategy_input]
+        engine.strategy = strategy_cls()
+        print(f"╎ 使用策略：{strategy_label}")
+
+        print("-" * 50)
+        while True:
+            period_input = input(f"╎ 請選擇回測期間 [{'/'.join(VALID_PERIODS)}]: ").strip()
+            if period_input in VALID_PERIODS:
+                break
+            print(f"╎ 無效期間，請重新輸入...")
+        print(f"╎ 回測期間：{period_input}")
+
+        print("-" * 50)
+        data = fetcher.fetch_historical_data(period=period_input)
+        if data.empty:
+            print(f"╎ 找不到 '{ticker}' 的歷史資料...")
+            continue
+
+        result = engine.run(ticker, data)
+        engine.print_backtest_result(result)

@@ -85,17 +85,24 @@ classDiagram
     %% --------------------------------
     class indicator {
         <<Module: quant/indicator>>
-        +compute_indicators(ticker, history_data) None
+        +compute_indicators(ticker, history_data, columns) None
         +compute_indicators_for_discord(ticker, name, history_data, intraday_data, latest_time) StockSnapshot
     }
-    note for indicator "將指標寫進傳入的資料"
+    note for indicator "columns=None 計算全套；否則只算指定欄位"
 
     class Strategy {
         <<Abstract>>
+        +list~str~ required_columns
         +signal(row, position) Signal
     }
 
     class RSIStrategy {
+        +required_columns = ["RSI"]
+        +signal(row, position) Signal
+    }
+
+    class EMAStrategy {
+        +required_columns = ["EMA_5", "EMA_20"]
         +signal(row, position) Signal
     }
 
@@ -225,6 +232,7 @@ classDiagram
     daily_prices --> stocks : FK (ticker)
 
     RSIStrategy --|> Strategy : 繼承
+    EMAStrategy --|> Strategy : 繼承
     Strategy ..> Signal : 回傳
     BacktestEngine --> Strategy : 持有
     BacktestEngine --> indicator : 計算指標

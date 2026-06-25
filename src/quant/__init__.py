@@ -1,2 +1,2 @@
 from .indicator import compute_indicators, compute_indicators_for_discord
-from .strategy import RSIStrategy
+from .strategy import RSIStrategy, EMAStrategy

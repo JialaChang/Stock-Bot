@@ -10,7 +10,6 @@
 - **累積倍率資產追蹤**：避免複利計算誤差，精確模擬資金曲線
 - **策略與引擎解耦**：輕鬆開發新策略，無需修改回測邏輯
 - **完整交易紀錄**：每筆交易的進出場時機、價格、信號條件、損益明細
-- **內建 RSI 策略**：範例實作超買/超賣交易邏輯
 
 附贈 **Discord 查詢機器人**，快速查看股票技術指標、K 線圖與市場數據（支援台股、美股、全球指數）  
 
@@ -202,7 +201,7 @@ python src/database/database.py
 
 | 函式 | 用途 | 回傳 |
 |------|------|------|
-| `compute_indicators()` | 量化回測：將全套指標原地寫入 DataFrame | `None` |
+| `compute_indicators(ticker, data, columns)` | 量化回測：依 `columns` 清單按需計算指標並原地寫入 DataFrame；`columns=None` 代表計算全套 | `None` |
 | `compute_indicators_for_discord()` | Discord 展示：計算 Embed 所需的指標，整合盤中現價與漲跌幅，回傳資料載體 | `StockSnapshot` |
 
 ### `generate_history_chart` / `generate_intraday_chart` (`src/utils/visualizer.py`)
@@ -219,7 +218,8 @@ python src/database/database.py
 
 逐日迭代歷史 OHLCV 資料的回測引擎：
 - 初始化時接收一個 `Strategy` 實例，引擎與策略邏輯完全解耦
-- 呼叫 `compute_indicators()` 寫入全套指標後，以 **pending signal** 模式逐根 K 棒執行策略
+- 讀取策略的 `required_columns`，只計算必要指標，`dropna` 也只針對這些欄位（避免因其他指標的 warm-up 期丟掉多餘資料）
+- 以 **pending signal** 模式逐根 K 棒執行策略
 - 支援做多與做空：透過 `cumulative_multiplier` 追蹤累積收益倍率，避免複利誤差
 - 回測結束若仍有未平倉部位，以最後一日收盤價強制平倉並計入交易紀錄
 - 回傳 `BacktestResult`，包含交易明細、資產曲線、總報酬率、勝率、最大回撤
@@ -229,17 +229,18 @@ python src/database/database.py
   1. 執行昨日收盤產生的 pending signal → 今日開盤價成交
   2. 盤中止損檢查（同日即時執行，不走 pending）：成交價 = 止損價，若開盤已跳空則以開盤價成交
   3. 今日收盤估算浮動損益，記錄 equity
-  4. RSIStrategy 依今日收盤指標產生訊號（作為明日 pending）
+  4. Strategy.signal() 依今日收盤指標產生訊號（作為明日 pending）
 
 回測結束：未平倉部位 → 最後一日收盤強制平倉
 ```
 
 ### `Strategy` (`src/quant/strategy.py`)
 
-| 類別 | 說明 |
-|------|------|
-| `Strategy` | 抽象基底類別，回傳含觸發條件與指標數值的 `Signal` |
-| `RSIStrategy` | RSI 策略實作 |
+| 類別 | `required_columns` | 說明 |
+|------|--------------------|------|
+| `Strategy` | `[]`（抽象預設） | 抽象基底類別，子類別必須實作 `signal()`，並宣告 `required_columns` 告知引擎所需指標 |
+| `RSIStrategy` | `["RSI"]` | RSI 超買/ 超賣策略 |
+| `EMAStrategy` | `["EMA_5", "EMA_20"]` | EMA5/20 黃金交叉、死亡交叉策略 |
 
 ### `Signal` / `Position` / `Trade` / `BacktestResult` (`src/models/trade.py`)
 
