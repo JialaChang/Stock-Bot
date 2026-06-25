@@ -6,7 +6,7 @@ from src.models import BacktestResult, Trade, Position, Signal
 from src.quant import compute_indicators, RSIStrategy
 
 INITIAL_CAPITAL = 100_000
-STOP_LOSS = 0.10
+STOP_LOSS = 0.15
 
 class BacktestEngine:
     def __init__(self) -> None:
@@ -60,30 +60,45 @@ class BacktestEngine:
             
             elif signal.action == "HOLD":
                 pass
-        
+
+            # 盤中止損，直接以止損價成交
+            if self.position is not None:
+                if self.position.side == "LONG" and row['Low'] / self.position.entry_price < (1 - STOP_LOSS):
+                    stop_price = self.position.entry_price * (1 - STOP_LOSS)
+                    stop_price = min(stop_price, price_open)  # 跳空開盤低於止損價時以開盤價成交
+                    self.cumulative_multiplier *= stop_price / self.position.entry_price
+                    exit_signal = Signal("EXIT_LONG",
+                                         {"stop_loss": True},
+                                         {})
+                    trade = Trade(ticker,
+                                  self.position.entry_date, self.position.entry_price,
+                                  date.date(), stop_price,
+                                  self.position.entry_signal, exit_signal,
+                                  "LONG")
+                    self.trades.append(trade)
+                    self.position = None
+
+                elif self.position.side == "SHORT" and row['High'] / self.position.entry_price > (1 + STOP_LOSS):
+                    stop_price = self.position.entry_price * (1 + STOP_LOSS)
+                    stop_price = max(stop_price, price_open)  # 跳空開盤高於止損價時以開盤價成交
+                    self.cumulative_multiplier *= 2 - stop_price / self.position.entry_price
+                    exit_signal = Signal("EXIT_SHORT",
+                                         {"stop_loss": True},
+                                         {})
+                    trade = Trade(ticker,
+                                  self.position.entry_date, self.position.entry_price,
+                                  date.date(), stop_price,
+                                  self.position.entry_signal, exit_signal,
+                                  "SHORT")
+                    self.trades.append(trade)
+                    self.position = None
+                    
             # 浮動損益
             pnl_ratio = self.position.unrealized_pnl_ratio(price_close) if self.position else 1.0
             self.equity.append(INITIAL_CAPITAL * self.cumulative_multiplier * pnl_ratio)
 
             # 以今日收盤產生訊號明天使用
             signal = self.strategy.signal(row, self.position)
-            
-            # 止損平倉
-            if self.position is not None:
-                if self.position.side == "LONG":
-                    trigger_ratio = row['Low'] / self.position.entry_price
-                    stop_triggered = (row['Low'] / self.position.entry_price) < (1 - STOP_LOSS)
-                else:
-                    trigger_ratio = row['High'] / self.position.entry_price
-                    stop_triggered = (row['High'] / self.position.entry_price) > (1 + STOP_LOSS)
-                
-                if stop_triggered:
-                    pnl_ratio = round(trigger_ratio if self.position.side == "LONG" else 2 - trigger_ratio, 4)
-                    signal = Signal(
-                        "EXIT_LONG" if self.position.side == "LONG" else "EXIT_SHORT",
-                        {"stop_loss": True},
-                        {"pnl_ratio": float(pnl_ratio)}
-                    )
 
         # 回測結束強制平倉
         if self.position is not None:
