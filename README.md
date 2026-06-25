@@ -4,15 +4,21 @@
 ![Managed by uv](https://img.shields.io/badge/managed%20by-uv-purple)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Discord 股票查詢機器人，支援台股、美股與全球主要指數，提供技術分析指標（RSI、MA）與 K 線圖  
-希望未來能擴充成兼具指標與技術分析，並套用機器學習的量化交易專案  
+量化交易回測框架，用於驗證和評估股票交易策略。支援**雙向交易**（做多/做空）、**自訂策略**開發、**止損機制**與完整的績效評估指標（報酬率、勝率、最大回撤）。
+
+核心特性：
+- **累積倍率資產追蹤**：避免複利計算誤差，精確模擬資金曲線
+- **策略與引擎解耦**：輕鬆開發新策略，無需修改回測邏輯
+- **完整交易紀錄**：每筆交易的進出場時機、價格、信號條件、損益明細
+- **內建 RSI 策略**：範例實作超買/超賣交易邏輯
+
+附贈 **Discord 查詢機器人**，快速查看股票技術指標、K 線圖與市場數據（支援台股、美股、全球指數）  
 
 <div>
+  
+  [![邀請機器人](https://img.shields.io/badge/邀請機器人到伺服器-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/oauth2/authorize?client_id=1494994206425612399)
+  
   <img src="./docs/image.png" width="300" alt="圖表頁面">
-
-  <a href="https://discord.com/oauth2/authorize?client_id=1494994206425612399">
-    <img src="https://img.shields.io/badge/邀請機器人到伺服器-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="邀請機器人">
-  </a>
 </div>
 
 ---
@@ -213,10 +219,22 @@ python src/database/database.py
 
 逐日迭代歷史 OHLCV 資料的回測引擎：
 - 初始化時接收一個 `Strategy` 實例，引擎與策略邏輯完全解耦
-- 呼叫 `compute_indicators()` 寫入全套指標後，逐根 K 棒詢問策略訊號（ENTER_LONG / EXIT_LONG / ENTER_SHORT / EXIT_SHORT / HOLD）
-- 支援做多與做空：透過 `cumulative_multiplier` 追蹤累積收益倍率，避免複利誤差，引入止損機制（虧損 10% 自動平倉）
-- 追蹤持倉狀態與每日浮動資產淨值，出場時結算並記錄 `Trade`
+- 呼叫 `compute_indicators()` 寫入全套指標後，以 **pending signal** 模式逐根 K 棒執行策略
+- 支援做多與做空：透過 `cumulative_multiplier` 追蹤累積收益倍率，避免複利誤差
+- 回測結束若仍有未平倉部位，以最後一日收盤價強制平倉並計入交易紀錄
 - 回傳 `BacktestResult`，包含交易明細、資產曲線、總報酬率、勝率、最大回撤
+
+**每日迴圈執行順序（避免前視偏差）：**
+
+```
+每日迴圈：
+  1. 執行昨日收盤產生的 pending signal → 今日開盤價成交
+  2. 今日收盤估算浮動損益，記錄 equity
+  3. RSIStrategy 依今日收盤指標產生訊號（作為明日 pending）
+  4. 止損檢查：若收盤虧損 > 10%，覆蓋 pending → 明日開盤強制平倉
+
+回測結束：未平倉部位 → 最後一日收盤強制平倉
+```
 
 ### `Strategy` (`src/quant/strategy.py`)
 
@@ -232,4 +250,4 @@ python src/database/database.py
 | `Signal` | 策略訊號載體：`action`（ENTER_LONG / EXIT_LONG / ENTER_SHORT / EXIT_SHORT / HOLD）、`conditions`（各子條件是否成立）、`values`（觸發時的指標快照） |
 | `Position` | 持倉中的進場快照：進場日期、價格、進場 Signal、倉位方向（LONG/SHORT），供引擎計算浮動損益與建立 Trade；方法 `unrealized_pnl_ratio()` 回傳當前浮動損益倍率 |
 | `Trade` | 單筆交易紀錄：進出場日期、價格、股數、倉位方向、進出場訊號，計算屬性含 `profit_and_loss`、`return_on_investment`、`is_profit` |
-| `BacktestResult` | 回測彙總：持有 `trades` 列表與 `equity_curve`，計算屬性含 `total_return`、`win_rate`、`max_drawdown` |
+| `BacktestResult` | 回測彙總：持有 `trades` 列表與 `equity_curve`，計算屬性含 `total_return`、`win_rate`、`max_drawdown`、`trade_count` |
