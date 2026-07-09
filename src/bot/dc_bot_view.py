@@ -3,7 +3,7 @@ from discord.ui import Button, View
 import io
 import logging
 
-from src.models import StockSnapshot
+from src.models import StockSnapshot, BacktestResult
 
 logger = logging.getLogger(__name__)
 
@@ -76,3 +76,18 @@ async def send_stock_response(interaction: discord.Interaction, snapshot: StockS
     view = DiscordStockChart(snapshot.ticker, history_bytes, intraday_bytes)
     msg = await interaction.followup.send(embed=embed, file=file, view=view)
     view.message = msg  # 儲存 Message 參考，供 on_timeout 清理使用
+
+
+async def send_backtest_response(interaction: discord.Interaction, result: BacktestResult, strategy_label: str, chart_bytes: bytes) -> None:
+    """組建 Discord Embed 並將回測結果送出至頻道"""
+    color = 0xe74c3c if result.total_return > 0 else (0x2ecc71 if result.total_return < 0 else 0x676767)
+
+    embed = discord.Embed(title=f"📊 {result.ticker} 回測結果（{strategy_label}）", color=color)
+    embed.add_field(name="總報酬率", value=f"**{result.total_return:.2f}%**", inline=True)
+    embed.add_field(name="勝率", value=f"**{result.win_rate:.2f}%**", inline=True)
+    embed.add_field(name="最大回撤", value=f"**{result.max_drawdown:.2f}%**", inline=True)
+    embed.add_field(name="交易次數", value=f"**{result.trade_count}**", inline=True)
+    embed.set_image(url="attachment://backtest.png")
+
+    file = discord.File(io.BytesIO(chart_bytes), filename="backtest.png")
+    await interaction.followup.send(embed=embed, file=file)

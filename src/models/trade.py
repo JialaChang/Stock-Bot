@@ -65,6 +65,7 @@ class BacktestResult:
     ticker: str
     trades: list[Trade]
     equity_curve: pd.Series  # index=date, value=netWorth
+    data: pd.DataFrame  # OHLCV 資料
 
     @property
     def total_return(self) -> float:

@@ -3,6 +3,10 @@ import pandas as pd
 import io
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
+from datetime import date
+
+from src.models import BacktestResult
 
 # 關閉 GUI 互動模式，強制將 Matplotlib 渲染後端設為 'Agg'，適用於伺服器端純生成圖片
 matplotlib.use('Agg')
@@ -93,3 +97,57 @@ def generate_intraday_chart(ticker: str, data: pd.DataFrame) -> io.BytesIO:
     buffer.seek(0)
     plt.close('all')
     return buffer
+
+def generate_backtest_chart(ticker: str, result: BacktestResult) -> io.BytesIO:
+    """生成回測結果圖：K線 + 進出場標記 + 權益曲線"""
+    data = result.data
+
+    long_entries = [(t.entry_date, t.entry_price) for t in result.trades if t.side == "LONG"]
+    long_exits = [(t.exit_date, t.exit_price) for t in result.trades if t.side == "LONG"]
+    short_entries = [(t.entry_date, t.entry_price) for t in result.trades if t.side == "SHORT"]
+    short_exits = [(t.exit_date, t.exit_price) for t in result.trades if t.side == "SHORT"]
+
+    marker_long_entries = _build_marker_series(data, long_entries)
+    marker_long_exits = _build_marker_series(data, long_exits)
+    marker_short_entries = _build_marker_series(data, short_entries)
+    marker_short_exits = _build_marker_series(data, short_exits)
+
+    addplot = [
+        mpf.make_addplot(result.equity_curve, panel=1, color='#3498db', ylabel='Equity', width=1.2),
+    ]
+    if marker_long_entries.notna().any():
+        addplot.append(mpf.make_addplot(marker_long_entries, type='scatter', markersize=80, marker='^', color="#e73ce7"))
+    if marker_long_exits.notna().any():
+        addplot.append(mpf.make_addplot(marker_long_exits, type='scatter', markersize=80, marker='v', color='#e73ce7'))
+    if marker_short_entries.notna().any():
+        addplot.append(mpf.make_addplot(marker_short_entries, type='scatter', markersize=80, marker='^', color="#2eccbf"))
+    if marker_short_exits.notna().any():
+        addplot.append(mpf.make_addplot(marker_short_exits, type='scatter', markersize=80, marker='v', color='#2eccbf'))
+
+    buffer = io.BytesIO()
+
+    mpf.plot(
+        data,
+        type='candle',
+        addplot=addplot,
+        style=_MPF_STYLE,
+        title=f"\n{ticker}",
+        show_nontrading=False,
+        datetime_format='%m/%d',
+        tight_layout=True,
+        xrotation=0,
+        panel_ratios=(4, 2),
+        savefig=buffer
+    )
+    
+    buffer.seek(0)
+    plt.close('all')
+    return buffer
+
+
+def _build_marker_series(data: pd.DataFrame, points: list[tuple[date, float]]) -> pd.Series:
+    """將 (日期, 價格) 列表轉成與 data.index 等長的標記序列，非交易日為 NaN"""
+    marker = pd.Series(data=np.nan, index=data.index)
+    for d, price in points:
+        marker.loc[pd.Timestamp(d)] = price # pyright: ignore[reportCallIssue, reportArgumentType]
+    return marker

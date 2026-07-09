@@ -123,7 +123,7 @@ class BacktestEngine:
             self.position = None
 
         equity_curve = pd.Series(self.equity, index=data.index)
-        return BacktestResult(ticker, self.trades, equity_curve)
+        return BacktestResult(ticker, self.trades, equity_curve, data)
     
     def print_backtest_result(self, result: BacktestResult) -> None:
         """輸出回測結果"""

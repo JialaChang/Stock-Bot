@@ -1,1 +1,1 @@
-from .visualizer import generate_history_chart, generate_intraday_chart
+from .visualizer import generate_history_chart, generate_intraday_chart, generate_backtest_chart

@@ -43,6 +43,6 @@ class EMAStrategy(Strategy):
         if position is None and ema5 < ema20:
             return Signal("ENTER_SHORT", {"ema_death_cross": True}, {"EMA_5": ema5, "EMA_20": ema20})
         if position is not None and position.side == "SHORT" and ema20 < ema5:
-            return Signal("EXIT_SHORT", {"ema_death_cross": True}, {"EMA_5": ema5, "EMA_20": ema20})
+            return Signal("EXIT_SHORT", {"ema_golden_cross": True}, {"EMA_5": ema5, "EMA_20": ema20})
 
         return Signal("HOLD", {}, {"EMA_5": ema5, "EMA_20": ema20})
