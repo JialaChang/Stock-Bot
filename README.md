@@ -40,6 +40,8 @@ stock-bot/
 └── main.py           # 啟動入口
 ```
 
+完整類別關聯與方法簽章請見 [docs/UML.md](./docs/UML.md)
+
 ---
 
 ## 資料庫結構
@@ -133,6 +135,7 @@ python src/database/database.py
 | 指令 | 說明 |
 |------|------|
 | `/stock <ticker>` | 查詢股票資訊、技術指標與 K 線圖 |
+| `/backtest <ticker> <strategy> <period>` | 對指定股票執行策略回測，回傳績效指標與圖表（K 線 + 進出場標記 + 權益曲線） |
 
 輸入格式範例：
 
@@ -154,6 +157,16 @@ python src/database/database.py
     → asyncio.gather()                    # 並發：生成歷史 K 線圖 + 盤中分時圖
     → send_stock_response()               # 組裝 Embed 並送出
     → DiscordStockChart View              # 回傳 Embed + 可切換按鈕（5 分鐘逾時）
+```
+
+### Discord `/backtest` 指令資料流
+
+```
+使用者輸入 ticker、strategy、period
+    → StockDataFetcher.fetch_historical_data(period)  # 取得歷史 OHLCV
+    → BacktestEngine.run(ticker, data)                # 依策略逐日回測，回傳 BacktestResult
+    → generate_backtest_chart()                       # 繪製 K 線 + 進出場標記 + 權益曲線
+    → send_backtest_response()                        # 組裝績效指標 Embed 並附圖送出
 ```
 
 ---
@@ -204,15 +217,22 @@ python src/database/database.py
 | `compute_indicators(ticker, data, columns)` | 量化回測：依 `columns` 清單按需計算指標並原地寫入 DataFrame；`columns=None` 代表計算全套 | `None` |
 | `compute_indicators_for_discord()` | Discord 展示：計算 Embed 所需的指標，整合盤中現價與漲跌幅，回傳資料載體 | `StockSnapshot` |
 
-### `generate_history_chart` / `generate_intraday_chart` (`src/utils/visualizer.py`)
+### `generate_history_chart` / `generate_intraday_chart` / `generate_backtest_chart` (`src/utils/visualizer.py`)
 
 生成 in-memory PNG 圖表：
 - **歷史日線圖**：K 線 + MA5/10/20 + 成交量
 - **盤中分時圖**：相對開盤價紅漲綠跌分色折線
+- **回測結果圖**：K 線 + 多空進出場標記 + 權益曲線
 
 ### `DiscordStockChart` (`src/bot/dc_bot_view.py`)
 
 持有圖表 bytes 的 Discord `View` 元件，提供按鈕切換日線圖 / 分時圖，逾時 5 分鐘自動清理。
+
+### `send_stock_response` / `send_backtest_response` (`src/bot/dc_bot_view.py`)
+
+組裝並送出 Discord Embed：
+- `send_stock_response`：股票資訊 Embed + 可切換圖表 View
+- `send_backtest_response`：回測績效指標（總報酬率／勝率／最大回撤／交易次數）Embed + 回測圖表
 
 ### `BacktestEngine` (`src/quant/backtest.py`)
 
@@ -249,4 +269,4 @@ python src/database/database.py
 | `Signal` | 策略訊號載體：`action`（ENTER_LONG / EXIT_LONG / ENTER_SHORT / EXIT_SHORT / HOLD）、`conditions`（各子條件是否成立）、`values`（觸發時的指標快照） |
 | `Position` | 持倉中的進場快照：進場日期、價格、進場 Signal、倉位方向（LONG/SHORT），供引擎計算浮動損益與建立 Trade；方法 `unrealized_pnl_ratio()` 回傳當前浮動損益倍率 |
 | `Trade` | 單筆交易紀錄：進出場日期、價格、股數、倉位方向、進出場訊號，計算屬性含 `profit_and_loss`、`return_on_investment`、`is_profit` |
-| `BacktestResult` | 回測彙總：持有 `trades` 列表與 `equity_curve`，計算屬性含 `total_return`、`win_rate`、`max_drawdown`、`trade_count` |
+| `BacktestResult` | 回測彙總：持有 `trades` 列表、`equity_curve` 與原始 `data`（OHLCV），計算屬性含 `total_return`、`win_rate`、`max_drawdown`、`trade_count` |

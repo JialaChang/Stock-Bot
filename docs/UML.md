@@ -1,14 +1,15 @@
 # 系統架構與 UML 類別圖
 
-本圖表展示了此專案中各個模組之間的相依性與核心類別結構。
+依專案目錄結構拆成 4 張圖，避免單一巨圖因跨層關聯過多、Mermaid 自動排版變得雜亂難讀。若某類別的完整定義屬於其他圖，會以 `<<見「X」圖>>` 標註，只保留關聯線。
+
+## 1. 資料模型 (Models)
+
+`src/models/` 下的共用資料傳輸物件，被 Quant 與 Bot 層共用。
 
 ```mermaid
 classDiagram
     direction TB
 
-    %% --------------------------------
-    %% 資料載體 (Models)
-    %% --------------------------------
     class StockSnapshot {
         <<Data Transfer Object>>
         +str ticker
@@ -58,31 +59,26 @@ classDiagram
         +str ticker
         +list~Trade~ trades
         +Series equity_curve
+        +DataFrame data
         +float total_return
         +float win_rate
         +float max_drawdown
         +int trade_count
     }
 
-    %% --------------------------------
-    %% 資料擷取 (Data)
-    %% --------------------------------
-    class StockDataFetcher {
-        -str _raw_ticker
-        +str ticker
-        +DataFrame historical_data
-        +DataFrame intraday_data
-        +check_stock_exist() bool
-        +fetch_stock_name() str
-        +fetch_historical_data(period) DataFrame
-        +fetch_intraday_data() DataFrame
-        +fetch_latest_time() Timestamp
-        +get_data_count() dict
-    }
+    Trade --> Signal : 包含 entry/exit
+    Position --> Signal : 包含 entry
+    BacktestResult --> Trade : 包含 list
+```
 
-    %% --------------------------------
-    %% 技術分析 (Quant)
-    %% --------------------------------
+## 2. 技術分析與回測引擎 (Quant)
+
+`src/quant/` 策略介面與回測引擎；`Strategy` 子類別透過 `required_columns` 告知引擎所需指標。
+
+```mermaid
+classDiagram
+    direction TB
+
     class indicator {
         <<Module: quant/indicator>>
         +compute_indicators(ticker, history_data, columns) None
@@ -116,19 +112,60 @@ classDiagram
         +print_backtest_result(result) None
     }
 
-    %% --------------------------------
-    %% 視覺化渲染 (Utils)
-    %% --------------------------------
-    class visualizer {
-        <<Module: utils/visualizer>>
-        +generate_history_chart(ticker, data, days) BytesIO
-        +generate_intraday_chart(ticker, data) BytesIO
+    class StockDataFetcher {
+        <<見「資料擷取、資料庫與排程腳本」圖>>
     }
-    note for visualizer "需要的指標已由 indicator 寫入"
+    class StockSnapshot {
+        <<見「資料模型」圖>>
+    }
+    class Signal {
+        <<見「資料模型」圖>>
+    }
+    class Position {
+        <<見「資料模型」圖>>
+    }
+    class Trade {
+        <<見「資料模型」圖>>
+    }
+    class BacktestResult {
+        <<見「資料模型」圖>>
+    }
 
-    %% --------------------------------
-    %% Discord 機器人與 UI (Bot)
-    %% --------------------------------
+    RSIStrategy --|> Strategy : 繼承
+    EMAStrategy --|> Strategy : 繼承
+    Strategy ..> Signal : 回傳
+    indicator ..> StockSnapshot : 回傳股票快照
+    BacktestEngine --> Strategy : 持有
+    BacktestEngine --> indicator : 計算指標
+    BacktestEngine --> StockDataFetcher : 取得歷史資料
+    BacktestEngine ..> Position : 持倉追蹤
+    BacktestEngine ..> Trade : 產生
+    BacktestEngine ..> BacktestResult : 回傳
+```
+
+## 3. Discord 機器人與圖表渲染 (Bot & Utils)
+
+`src/bot/` 斜線指令與 View 元件；`src/utils/visualizer.py` 負責產生圖表 bytes。
+
+```mermaid
+classDiagram
+    direction TB
+
+    class dc_bot {
+        <<Module: bot/dc_bot>>
+        +commands.Bot bot
+        +on_ready()
+        +on_disconnect()
+        +analyze_stock(interaction, ticker)
+        +backtest_stock(interaction, ticker, strategy, period)
+    }
+
+    class dc_bot_view {
+        <<Module: bot/dc_bot_view>>
+        +send_stock_response(interaction, snapshot, history_bytes, intraday_bytes)
+        +send_backtest_response(interaction, result, strategy_label, chart_bytes)
+    }
+
     class DiscordStockChart {
         <<discord.ui.View>>
         +str stock_ticker
@@ -140,22 +177,57 @@ classDiagram
         +btn_toggle(interaction, button)
     }
 
-    class dc_bot {
-        <<Module: bot/dc_bot>>
-        +commands.Bot bot
-        +on_ready()
-        +on_disconnect()
-        +analyze_stock(interaction, ticker)
+    class visualizer {
+        <<Module: utils/visualizer>>
+        +generate_history_chart(ticker, data, days) BytesIO
+        +generate_intraday_chart(ticker, data) BytesIO
+        +generate_backtest_chart(ticker, result) BytesIO
+    }
+    note for visualizer "需要的指標已由 indicator 寫入"
+
+    class StockDataFetcher {
+        <<見「資料擷取、資料庫與排程腳本」圖>>
+    }
+    class indicator {
+        <<見「技術分析與回測引擎」圖>>
+    }
+    class BacktestEngine {
+        <<見「技術分析與回測引擎」圖>>
+    }
+    class BacktestResult {
+        <<見「資料模型」圖>>
     }
 
-    class dc_bot_view {
-        <<Module: bot/dc_bot_view>>
-        +send_stock_response(interaction, snapshot, history_bytes, intraday_bytes)
+    dc_bot --> StockDataFetcher : 實例化
+    dc_bot --> indicator : 計算指標
+    dc_bot --> visualizer : 繪製圖表
+    dc_bot --> dc_bot_view : 封裝 View 訊息物件
+    dc_bot --> BacktestEngine : 執行回測
+    dc_bot_view --> DiscordStockChart : 實例化 View
+    dc_bot_view ..> BacktestResult : 讀取回測結果
+```
+
+## 4. 資料擷取、資料庫與排程腳本 (Data & Database & Scripts)
+
+`src/data/fetcher.py` 整合 SQLite 與 yfinance；`src/database/` 為底層 CRUD；`scripts/` 為獨立排程腳本。
+
+```mermaid
+classDiagram
+    direction TB
+
+    class StockDataFetcher {
+        -str _raw_ticker
+        +str ticker
+        +DataFrame historical_data
+        +DataFrame intraday_data
+        +check_stock_exist() bool
+        +fetch_stock_name() str
+        +fetch_historical_data(period) DataFrame
+        +fetch_intraday_data() DataFrame
+        +fetch_latest_time() Timestamp
+        +get_data_count() dict
     }
 
-    %% --------------------------------
-    %% 資料庫操作 (Database)
-    %% --------------------------------
     class database {
         <<Module: database/database>>
         +str DB_PATH
@@ -166,9 +238,6 @@ classDiagram
         +get_daily_prices(ticker, limit) list
     }
 
-    %% --------------------------------
-    %% 資料庫表 (Database Tables)
-    %% --------------------------------
     class stocks {
         <<Database Table>>
         +ticker TEXT PK
@@ -189,9 +258,6 @@ classDiagram
         +volume REAL
     }
 
-    %% --------------------------------
-    %% 獨立排程腳本 (Scripts)
-    %% --------------------------------
     class daily_updater {
         <<Script>>
         +update_stock_data()
@@ -209,38 +275,13 @@ classDiagram
         +import_global_indices(conn)
     }
 
-    %% 關聯性定義 (Relationships)
-    dc_bot --> StockDataFetcher : 實例化
-    dc_bot --> indicator : 計算指標
-    dc_bot --> visualizer : 繪製圖表
-    dc_bot --> dc_bot_view : 封裝 View 訊息物件
-    dc_bot_view --> DiscordStockChart : 實例化 View
-
-    indicator ..> StockSnapshot : 回傳股票快照
-
     StockDataFetcher ..> stocks : 讀取
     StockDataFetcher ..> daily_prices : 讀取
-
     database ..> stocks : CURD
     database ..> daily_prices : CURD
-
     daily_updater ..> daily_prices : 寫入
     historical_backfill ..> daily_prices : 寫入
     seed_stocks --> database : 初始化
     seed_stocks ..> stocks : 寫入
-
     daily_prices --> stocks : FK (ticker)
-
-    RSIStrategy --|> Strategy : 繼承
-    EMAStrategy --|> Strategy : 繼承
-    Strategy ..> Signal : 回傳
-    BacktestEngine --> Strategy : 持有
-    BacktestEngine --> indicator : 計算指標
-    BacktestEngine --> StockDataFetcher : 取得歷史資料
-    BacktestEngine ..> Position : 持倉追蹤
-    BacktestEngine ..> Trade : 產生
-    BacktestEngine ..> BacktestResult : 回傳
-    BacktestResult --> Trade : 包含 list
-    Trade --> Signal : 包含 entry/exit
-    Position --> Signal : 包含 entry
 ```
