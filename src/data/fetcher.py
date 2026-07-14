@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 # Add the project root to the module search path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from src.database import DB_PATH
+from src.database import DB_PATH, load_sql
 
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 logger = logging.getLogger(__name__)
@@ -86,23 +86,9 @@ class StockDataFetcher:
         try:
             cutoff_date = (datetime.now() - timedelta(days)).strftime('%Y-%m-%d')
 
-            query = '''
-                SELECT
-                    date,
-                    open_price AS Open,
-                    high_price AS High,
-                    low_price AS Low,
-                    close_price AS Close,
-                    adjust_close_price AS AdjClose,
-                    volume AS Volume
-                FROM daily_prices
-                WHERE ticker = ? AND date >= ?
-                ORDER BY date ASC
-            '''
-
             with sqlite3.connect(DB_PATH) as conn:
                 self.historical_data = pd.read_sql_query(
-                    query,
+                    load_sql('select_historical_prices'),
                     conn,
                     params=(self.ticker, cutoff_date),
                     parse_dates=['date'],

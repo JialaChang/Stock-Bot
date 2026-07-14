@@ -30,7 +30,7 @@ stock-bot/
 │   ├── bot/          # Discord 斜線指令 & UI 元件
 │   ├── data/         # 股票資料查詢與下載
 │   ├── quant/        # 技術指標計算 & 回測引擎
-│   ├── database/     # 資料庫初始化與 CRUD
+│   ├── database/     # 資料庫初始化與 CRUD（SQL 語句集中於 sql/*.sql）
 │   ├── models/       # 共用資料類別
 │   └── utils/        # 圖表生成 & HTML 報表
 ├── scripts/
@@ -70,6 +70,8 @@ daily_prices (
 ```
 
 > **除權息調整**：查詢歷史資料時，系統以 `AdjClose / Close` 的比率回推開高低價，消除配息或股票分割造成的圖表跳空缺口。
+
+> 完整 schema 定義於 [src/database/sql/schema.sql](./src/database/sql/schema.sql)；跨模組共用的 SQL 皆以 `.sql` 檔集中於該目錄，由 `load_sql()` 載入。
 
 ---
 
@@ -119,6 +121,11 @@ python src/database/database.py  # 操作資料庫（互動式）
 ```
 
 > **HTML 報表**：回測完成後可選擇匯出 HTML 績效報表；資料庫查詢超過 50 筆時自動改為匯出 HTML 報表。檔案輸出至 `exports/`
+
+<div>
+  <img src="./docs/backtest_html.png" height="400" alt="回測績效 HTML 報表：績效指標與逐筆交易明細">
+  <img src="./docs/price_html.png" height="400" alt="歷史價格 HTML 報表：OHLCV 明細，收盤價依漲跌上色">
+</div>
 
 ---
 

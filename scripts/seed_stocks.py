@@ -5,7 +5,7 @@ import pandas as pd
 import logging
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.database import DB_PATH, init_database
+from src.database import DB_PATH, init_database, load_sql
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -25,13 +25,7 @@ def import_taiwan_stocks(conn: sqlite3.Connection):
                 ticker = f"{code}.TWO"
             else:
                 continue
-            cursor.execute('''
-                INSERT INTO stocks (ticker, name, market)
-                VALUES (?, ?, ?)
-                ON CONFLICT(ticker) DO UPDATE SET
-                    name=excluded.name,
-                    market=excluded.market
-            ''', (ticker, info.name, 'TW'))
+            cursor.execute(load_sql('upsert_stock'), (ticker, info.name, 'TW'))
             count += 1
 
     conn.commit()
@@ -81,13 +75,7 @@ def import_us_stocks(conn: sqlite3.Connection):
                 for _, row in data.iterrows()
             ]
 
-            cursor.executemany('''
-                INSERT INTO stocks (ticker, name, market)
-                VALUES (?, ?, ?)
-                ON CONFLICT(ticker) DO UPDATE SET
-                    name=excluded.name,
-                    market=excluded.market
-            ''', records)
+            cursor.executemany(load_sql('upsert_stock'), records)
 
             conn.commit()
             count = len(records)
@@ -130,13 +118,7 @@ def import_global_indices(conn: sqlite3.Connection):
 
     records = [(ticker, name, 'INDEX') for ticker, name in indices.items()]
 
-    cursor.executemany('''
-        INSERT INTO stocks (ticker, name, market)
-        VALUES (?, ?, ?)
-        ON CONFLICT(ticker) DO UPDATE SET
-            name=excluded.name,
-            market=excluded.market
-    ''', records)
+    cursor.executemany(load_sql('upsert_stock'), records)
 
     conn.commit()
     logger.info(f"Imported {len(records)} global market indices!")

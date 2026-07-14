@@ -223,7 +223,7 @@ classDiagram
 
 ## 4. 資料擷取、資料庫與排程腳本 (Data & Database & Scripts)
 
-`src/data/fetcher.py` 整合 SQLite 與 yfinance；`src/database/` 為底層 CRUD；`scripts/` 為獨立排程腳本。
+`src/data/fetcher.py` 整合 SQLite 與 yfinance；`src/database/` 為底層 CRUD 與 SQL 語句集中地；`scripts/` 為獨立排程腳本。
 
 ```mermaid
 classDiagram
@@ -245,6 +245,7 @@ classDiagram
     class database {
         <<Module: database/database>>
         +str DB_PATH
+        +load_sql(name) str
         +init_database()
         +insert_stock(ticker, name, market)
         +delete_stock(ticker)
@@ -252,6 +253,16 @@ classDiagram
         +get_daily_prices(ticker, limit) list
         -_export_prices_html(ticker, prices)
     }
+
+    class sql_files {
+        <<SQL Files: database/sql>>
+        schema.sql
+        upsert_stock.sql
+        upsert_daily_price.sql
+        select_daily_prices.sql
+        select_historical_prices.sql
+    }
+    note for sql_files "SQL 集中於此，由 load_sql() 載入並快取"
 
     class html_report {
         <<見「Discord 機器人與圖表渲染」圖>>
@@ -296,11 +307,15 @@ classDiagram
 
     StockDataFetcher ..> stocks : 讀取
     StockDataFetcher ..> daily_prices : 讀取
+    StockDataFetcher --> database : load_sql()
+    database --> sql_files : load_sql() 載入
     database ..> stocks : CURD
     database ..> daily_prices : CURD
+    daily_updater --> database : load_sql()
     daily_updater ..> daily_prices : 寫入
+    historical_backfill --> database : load_sql()
     historical_backfill ..> daily_prices : 寫入
-    seed_stocks --> database : 初始化
+    seed_stocks --> database : 初始化 / load_sql()
     seed_stocks ..> stocks : 寫入
     daily_prices --> stocks : FK (ticker)
 ```

@@ -5,7 +5,7 @@ import time
 import logging
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.database import DB_PATH
+from src.database import DB_PATH, load_sql
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -86,18 +86,7 @@ def backfill_history(period: int):
                         ]
 
                         # Use executemany for an efficient bulk parameterized write
-                        conn.cursor().executemany('''
-                            INSERT INTO daily_prices
-                            (ticker, date, open_price, high_price, low_price, close_price, adjust_close_price, volume)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            ON CONFLICT(ticker, date) DO UPDATE SET
-                                open_price=excluded.open_price,
-                                high_price=excluded.high_price,
-                                low_price=excluded.low_price,
-                                close_price=excluded.close_price,
-                                adjust_close_price=excluded.adjust_close_price,
-                                volume=excluded.volume
-                        ''', records)
+                        conn.cursor().executemany(load_sql('upsert_daily_price'), records)
                         success_count += 1
                         total_success += 1
 

@@ -42,6 +42,15 @@
 
 使用者：`database.py`（股票價格報表）、`BacktestEngine`（回測績效報表）。報表輸出至 `exports/`。
 
+### `database.py` + `sql/` (`src/database/`)
+
+底層 SQLite CRUD，SQL 語句集中管理：
+
+| 元件 | 說明 |
+|------|------|
+| `sql/*.sql` | 多行或跨模組共用的 SQL：`schema`、`upsert_stock`、`upsert_daily_price`、`select_daily_prices`、`select_historical_prices` |
+| `load_sql(name)` | 讀取 `sql/<name>.sql`（`lru_cache` 快取），自 `src.database` 匯出 |
+
 ### `dc_bot_view.py` (`src/bot/dc_bot_view.py`)
 
 - `DiscordStockChart`：持有圖表 bytes 的 `View`，按鈕切換日線 / 分時圖，逾時 5 分鐘清理

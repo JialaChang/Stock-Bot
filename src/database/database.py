@@ -3,6 +3,7 @@ import os
 import sys
 import logging
 from datetime import datetime
+from functools import lru_cache
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -13,40 +14,18 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 DB_PATH = os.path.join(BASE_DIR, 'stock_data.db')
+SQL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sql')
+
+@lru_cache
+def load_sql(name: str) -> str:
+    """Load a SQL statement from src/database/sql/<name>.sql."""
+    with open(os.path.join(SQL_DIR, f'{name}.sql'), encoding='utf-8') as f:
+        return f.read()
 
 def init_database():
     """Initialize the SQLite database tables."""
     with sqlite3.connect(DB_PATH) as connect:
-        cursor = connect.cursor()
-        # Stock master table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS stocks (
-                ticker TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                market TEXT
-            )
-        ''')
-        # Daily historical price table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS daily_prices (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ticker TEXT NOT NULL,
-                date TEXT NOT NULL,
-                open_price REAL,
-                high_price REAL,
-                low_price REAL,
-                close_price REAL,
-                adjust_close_price REAL,
-                volume REAL,
-                FOREIGN KEY (ticker) REFERENCES stocks (ticker),
-                UNIQUE(ticker, date)
-            )
-        ''')
-        # Composite index to speed up queries
-        cursor.execute('''
-            CREATE INDEX IF NOT EXISTS index_ticker_date
-            ON daily_prices (ticker, date)
-        ''')
+        connect.executescript(load_sql('schema'))
         connect.commit()
 
     logger.info(f"Database created at {DB_PATH}")
@@ -56,13 +35,7 @@ def insert_stock(ticker: str, name: str, market: str) -> None:
     """Insert or update a single stock's master record."""
     with sqlite3.connect(DB_PATH) as connect:
         cursor = connect.cursor()
-        cursor.execute('''
-            INSERT INTO stocks (ticker, name, market)
-            VALUES (?, ?, ?)
-            ON CONFLICT(ticker) DO UPDATE SET
-                name=excluded.name,
-                market=excluded.market
-        ''', (ticker, name, market))
+        cursor.execute(load_sql('upsert_stock'), (ticker, name, market))
         connect.commit()
 
 def delete_stock(ticker: str) -> None:
@@ -91,12 +64,7 @@ def get_daily_prices(ticker: str, days: int = 30) -> list[dict[str, Any]]:
     with sqlite3.connect(DB_PATH) as connect:
         connect.row_factory = sqlite3.Row
         cursor = connect.cursor()
-        cursor.execute('''
-            SELECT date, open_price, high_price, low_price, close_price, adjust_close_price, volume
-            FROM daily_prices
-            WHERE ticker = ?
-            ORDER BY date DESC LIMIT ?
-        ''', (ticker, days))
+        cursor.execute(load_sql('select_daily_prices'), (ticker, days))
         return [dict(row) for row in cursor.fetchall()]
 
 
