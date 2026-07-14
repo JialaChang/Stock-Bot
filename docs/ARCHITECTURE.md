@@ -29,6 +29,19 @@
 - `generate_intraday_chart`：盤中折線，以開盤價為界紅漲綠跌
 - `generate_backtest_chart`：K 線 + 多空進出場標記 + 權益曲線
 
+### `html_report.py` (`src/utils/html_report.py`)
+
+共用 HTML 報表層，讓呼叫端只提供資料、不寫任何 HTML 標籤：
+
+| 元件 | 說明 |
+|------|------|
+| `templates/report.html` | 靜態頁面外殼 + CSS，以 `$title` / `$meta` / `$body` 佔位符注入 |
+| `html_document(title, body, subtitle)` | 以 `string.Template` 將內容注入模板 |
+| `html_table(headers, rows)` | 由資料建表；儲存格為純文字或 `(文字, CSS class)` tuple 上色 |
+| `fmt_num` / `fmt_int` | 數字格式化，`None` 顯示 `N/A` |
+
+使用者：`database.py`（股票價格報表）、`BacktestEngine`（回測績效報表）。報表輸出至 `exports/`。
+
 ### `dc_bot_view.py` (`src/bot/dc_bot_view.py`)
 
 - `DiscordStockChart`：持有圖表 bytes 的 `View`，按鈕切換日線 / 分時圖，逾時 5 分鐘清理
@@ -42,6 +55,7 @@
 - **pending signal**：訊號於當日收盤產生，隔日開盤成交
 - 以 `cumulative_multiplier` 累積收益倍率，支援做多 / 做空
 - 結束時未平倉部位以最後一日收盤強制平倉，回傳 `BacktestResult`
+- `export_backtest_result_html()`：匯出 HTML 績效報表
 
 ```
 每日迴圈：

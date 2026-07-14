@@ -17,3 +17,6 @@ wheels/
 # others
 .env
 CLAUDE.md
+
+# output
+exports/

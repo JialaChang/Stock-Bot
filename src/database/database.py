@@ -1,12 +1,17 @@
 import sqlite3
 import os
+import sys
 import logging
+from datetime import datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # Absolute path to the project root
 BASE_DIR = os.path.dirname(os.path.dirname((os.path.dirname(os.path.abspath(__file__)))))
+if BASE_DIR not in sys.path:
+    sys.path.append(BASE_DIR)
+
 DB_PATH = os.path.join(BASE_DIR, 'stock_data.db')
 
 def init_database():
@@ -132,22 +137,68 @@ def _menu_get_prices():
     except ValueError:
         days = 10
     prices = get_daily_prices(ticker, days=days)
-    if prices:
-        print(f"\n[{ticker} latest {len(prices)} prices]")
-        print(f"{'Date':<12} | {'Open':>8} | {'Close':>8} | {'AdjClose':>8} | {'Volume':>12}")
-        print("-" * 60)
-        for p in prices:
-            open_p  = p.get('open_price')
-            close_p = p.get('close_price')
-            adj_close_p = p.get('adjust_close_price')
-            vol     = p.get('volume')
-            open_s  = f'{open_p:.2f}'  if open_p  is not None else 'N/A'
-            close_s = f'{close_p:.2f}' if close_p is not None else 'N/A'
-            adj_close_s = f'{adj_close_p:.2f}' if adj_close_p is not None else 'N/A'
-            vol_s   = f'{vol:.0f}'     if vol     is not None else 'N/A'
-            print(f"{p['date']:<12} | {open_s:>8} | {close_s:>8} | {adj_close_s:>8} | {vol_s:>12}")
-    else:
+    if not prices:
         print(f"No price data found for {ticker}...")
+        return
+
+    # Export to an HTML report instead of flooding the terminal when the result set is large.
+    if len(prices) > 50:
+        _export_prices_html(ticker, prices)
+        return
+
+    print(f"\n[{ticker} latest {len(prices)} prices]")
+    print(f"{'Date':<12} | {'Open':>8} | {'Close':>8} | {'AdjClose':>8} | {'Volume':>12}")
+    print("-" * 60)
+    for p in prices:
+        open_p  = p.get('open_price')
+        close_p = p.get('close_price')
+        adj_close_p = p.get('adjust_close_price')
+        vol     = p.get('volume')
+        open_s  = f'{open_p:.2f}'  if open_p  is not None else 'N/A'
+        close_s = f'{close_p:.2f}' if close_p is not None else 'N/A'
+        adj_close_s = f'{adj_close_p:.2f}' if adj_close_p is not None else 'N/A'
+        vol_s   = f'{vol:.0f}'     if vol     is not None else 'N/A'
+        print(f"{p['date']:<12} | {open_s:>8} | {close_s:>8} | {adj_close_s:>8} | {vol_s:>12}")
+
+def _export_prices_html(ticker: str, prices: list[dict[str, Any]]):
+    """Write price records to a HTML report under the project's exports/ directory."""
+    from src.utils.html_report import html_document, html_table, fmt_num, fmt_int
+
+    export_dir = os.path.join(BASE_DIR, 'exports')
+    os.makedirs(export_dir, exist_ok=True)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filepath = os.path.join(export_dir, f'{ticker}_prices_{timestamp}.html')
+
+    rows = []
+    # Rows are newest-first; the previous trading day is the next row, used to color the change.
+    for i, p in enumerate(prices):
+        close_p = p.get('close_price')
+        prev_close = prices[i + 1].get('close_price') if i + 1 < len(prices) else None
+        if close_p is not None and prev_close is not None:
+            cls = 'up' if close_p > prev_close else 'down' if close_p < prev_close else 'flat'
+        else:
+            cls = 'flat'
+        rows.append([
+            p.get('date', ''),
+            fmt_num(p.get('open_price')),
+            fmt_num(p.get('high_price')),
+            fmt_num(p.get('low_price')),
+            (fmt_num(close_p), cls),  # colored by daily change
+            fmt_num(p.get('adjust_close_price')),
+            fmt_int(p.get('volume')),
+        ])
+
+    table = html_table(['Date', 'Open', 'High', 'Low', 'Close', 'AdjClose', 'Volume'], rows)
+    data_range = f"{prices[-1].get('date', '?')} ~ {prices[0].get('date', '?')}"
+    html = html_document(
+        f'{ticker} &mdash; {len(prices)} records',
+        table,
+        subtitle=f"Data {data_range} · Generated {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+    )
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(html)
+
+    print(f"\n>> {len(prices)} records exported to: {filepath}")
 
 _MENU = [
     ("Initialize database", _menu_init_database),

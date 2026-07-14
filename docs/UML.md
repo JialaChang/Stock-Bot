@@ -110,10 +110,14 @@ classDiagram
         +list~float~ equity
         +run(ticker, data) BacktestResult
         +print_backtest_result(result) None
+        +export_backtest_result_html(result) str
     }
 
     class StockDataFetcher {
         <<見「資料擷取、資料庫與排程腳本」圖>>
+    }
+    class html_report {
+        <<見「Discord 機器人與圖表渲染」圖>>
     }
     class StockSnapshot {
         <<見「資料模型」圖>>
@@ -138,6 +142,7 @@ classDiagram
     BacktestEngine --> Strategy : 持有
     BacktestEngine --> indicator : 計算指標
     BacktestEngine --> StockDataFetcher : 取得歷史資料
+    BacktestEngine --> html_report : 匯出 HTML 報表
     BacktestEngine ..> Position : 持倉追蹤
     BacktestEngine ..> Trade : 產生
     BacktestEngine ..> BacktestResult : 回傳
@@ -184,6 +189,15 @@ classDiagram
         +generate_backtest_chart(ticker, result) BytesIO
     }
     note for visualizer "需要的指標已由 indicator 寫入"
+
+    class html_report {
+        <<Module: utils/html_report>>
+        +html_document(title, body, subtitle) str
+        +html_table(headers, rows) str
+        +fmt_num(v, decimals) str
+        +fmt_int(v) str
+    }
+    note for html_report "外殼與 CSS 在 templates/report.html"
 
     class StockDataFetcher {
         <<見「資料擷取、資料庫與排程腳本」圖>>
@@ -236,6 +250,11 @@ classDiagram
         +delete_stock(ticker)
         +get_stock(ticker) dict
         +get_daily_prices(ticker, limit) list
+        -_export_prices_html(ticker, prices)
+    }
+
+    class html_report {
+        <<見「Discord 機器人與圖表渲染」圖>>
     }
 
     class stocks {

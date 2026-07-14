@@ -32,7 +32,7 @@ stock-bot/
 │   ├── quant/        # 技術指標計算 & 回測引擎
 │   ├── database/     # 資料庫初始化與 CRUD
 │   ├── models/       # 共用資料類別
-│   └── utils/        # 圖表生成
+│   └── utils/        # 圖表生成 & HTML 報表
 ├── scripts/
 │   ├── seed_stocks.py           # 匯入台美股與全球指數基本清單
 │   ├── historical_backfill.py   # 回補歷史 K 線至資料庫
@@ -117,6 +117,8 @@ python src/bot/dc_bot.py         # 啟動 Discord 機器人
 python src/quant/backtest.py     # 執行回測（互動式）
 python src/database/database.py  # 操作資料庫（互動式）
 ```
+
+> **HTML 報表**：回測完成後可選擇匯出 HTML 績效報表；資料庫查詢超過 50 筆時自動改為匯出 HTML 報表。檔案輸出至 `exports/`
 
 ---
 

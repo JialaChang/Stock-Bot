@@ -1,7 +1,9 @@
 import pandas as pd
 import sys, os
+from datetime import datetime
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(BASE_DIR)
 from src.models import BacktestResult, Trade, Position, Signal
 from src.quant import compute_indicators, RSIStrategy, EMAStrategy
 
@@ -127,19 +129,6 @@ class BacktestEngine:
 
     def print_backtest_result(self, result: BacktestResult) -> None:
         """Print the backtest result."""
-        for trade in result.trades:
-            print("-" * 50)
-            if trade.side == "LONG":
-                print("LONG:")
-                print(f"Buy  {trade.entry_date} @{trade.entry_price:.2f}  conditions:{trade.entry_signal.conditions}  indicators:{trade.entry_signal.values}")
-                print(f"Sell {trade.exit_date} @{trade.exit_price:.2f}  conditions:{trade.exit_signal.conditions}  indicators:{trade.exit_signal.values}")
-                print(f"Return: {trade.return_on_investment:.2f}%")
-            else:
-                print("SHORT:")
-                print(f"Sell {trade.entry_date} @{trade.entry_price:.2f}  conditions:{trade.entry_signal.conditions}  indicators:{trade.entry_signal.values}")
-                print(f"Buy  {trade.exit_date} @{trade.exit_price:.2f}  conditions:{trade.exit_signal.conditions}  indicators:{trade.exit_signal.values}")
-                print(f"Return: {trade.return_on_investment:.2f}%")
-
         print("=" * 50)
         print(f"Total return: {result.total_return:.2f}%")
         print(f"Win rate: {result.win_rate:.2f}%")
@@ -150,6 +139,74 @@ class BacktestEngine:
         print(f"Equity curve min: {result.equity_curve.min():.2f}")
         print(f"Equity curve max: {result.equity_curve.max():.2f}")
         print("=" * 50)
+
+    def export_backtest_result_html(self, result: BacktestResult) -> str:
+        """Write the backtest result to an HTML report and return the file path."""
+        from src.utils.html_report import html_document, html_table, fmt_num
+
+        def signed_class(v: float) -> str:
+            return 'up' if v > 0 else 'down' if v < 0 else 'flat'
+
+        def signal_reason(sig: Signal) -> str:
+            reasons = [name for name, holds in sig.conditions.items() if holds]
+            return ', '.join(reasons) if reasons else 'N/A'
+
+        # --- Performance summary ---
+        total_ret = result.total_return
+        summary_rows = [
+            ['Total return', (f'{total_ret:+.2f}%', signed_class(total_ret))],
+            ['Win rate', f'{result.win_rate:.2f}%'],
+            ['Max drawdown', (f'{result.max_drawdown:.2f}%', 'down')],
+            ['Trade count', str(result.trade_count)],
+            ['Initial capital', fmt_num(result.equity_curve.iloc[0])],
+            ['Final capital', fmt_num(result.equity_curve.iloc[-1])],
+            ['Equity curve min', fmt_num(result.equity_curve.min())],
+            ['Equity curve max', fmt_num(result.equity_curve.max())],
+        ]
+        summary_table = html_table(None, summary_rows)
+
+        # --- Per-trade table ---
+        trade_rows = []
+        for t in result.trades:
+            roi = t.return_on_investment
+            trade_rows.append([
+                t.side,
+                (f'{roi:+.2f}%', signed_class(roi)),
+                (fmt_num(t.profit_and_loss), signed_class(t.profit_and_loss)),
+                str(t.entry_date),
+                fmt_num(t.entry_price),
+                signal_reason(t.entry_signal),
+                str(t.exit_date),
+                fmt_num(t.exit_price),
+                signal_reason(t.exit_signal),
+            ])
+        trades_table = html_table(
+            ['Side', 'Return', 'P&amp;L', 'Entry Date', 'Entry', 'Entry Reason',
+             'Exit Date', 'Exit', 'Exit Reason'],
+            trade_rows,
+        )
+
+        body = (
+            f'<h2>Performance</h2>\n{summary_table}\n'
+            f'<h2>Trades</h2>\n{trades_table}'
+        )
+        index = result.equity_curve.index
+        data_range = f"{index[0].strftime('%Y-%m-%d')} ~ {index[-1].strftime('%Y-%m-%d')}"
+        html = html_document(
+            f'{result.ticker} backtest &mdash; {self.strategy.__class__.__name__}',
+            body,
+            subtitle=f"Data {data_range} · Generated {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        )
+
+        export_dir = os.path.join(BASE_DIR, 'exports')
+        os.makedirs(export_dir, exist_ok=True)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filepath = os.path.join(export_dir, f'{result.ticker}_backtest_{timestamp}.html')
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(html)
+
+        print(f">> Backtest report exported to: {filepath}")
+        return filepath
 
 
 if __name__ == "__main__":
@@ -212,3 +269,6 @@ if __name__ == "__main__":
 
         result = engine.run(ticker, data)
         engine.print_backtest_result(result)
+
+        if input("╎ Export HTML report? (y/N) ").strip().lower() == 'y':
+            engine.export_backtest_result_html(result)
