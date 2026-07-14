@@ -13,19 +13,19 @@ from src.bot import send_stock_response, send_backtest_response
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
-# 指定測試伺服器 Guild 可加快指令同步；不設定則走 Global Sync（約 1 小時生效）
+# Specifying a test guild speeds up command sync; without it commands go through a global sync (takes about 1 hour to take effect).
 GUILD_ID = os.getenv('GUILD')
 GUILD = discord.Object(id=int(GUILD_ID)) if GUILD_ID else None
 
 logger = logging.getLogger(__name__)
 
-# 檢查環境變數
+# Validate environment variables
 if not TOKEN:
     raise ValueError("DISCORD_TOKEN not found in environment variables")
 if not GUILD:
     logger.warning("GUILD_ID not found in environment variables")
 
-# Intents 決定 Bot 訂閱哪些 Gateway 事件，未宣告的事件不會被推送
+# Intents decide which gateway events the bot subscribes to; undeclared events are not pushed.
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix='$', intents=intents)
 
@@ -40,26 +40,26 @@ async def on_ready():
 async def on_disconnect():
     logger.info("Discord Bot Disconnected...")
 
-@bot.tree.command(name="stock", description="輸入股票代碼查詢資訊與圖表（僅支援台股美股與部份指數）")
+@bot.tree.command(name="stock", description="Enter a ticker to query info and charts (TW/US stocks and some indices only)")
 async def analyze_stock(interaction: discord.Interaction, ticker: str):
-    # defer() 避免處理超過 3 秒導致 Discord 判定互動逾時
+    # defer() prevents Discord from timing out the interaction if processing takes over 3 seconds
     await interaction.response.defer()
 
     try:
         fetcher = StockDataFetcher(ticker)
-        # asyncio.to_thread 將同步阻塞的 SQLite/yfinance 呼叫卸載至執行緒池，避免阻塞 Event Loop
+        # asyncio.to_thread offloads the blocking SQLite/yfinance calls to a thread pool so the event loop is not blocked
         stock_name = await asyncio.to_thread(fetcher.fetch_stock_name)
         stock_ticker = fetcher.ticker
 
-        # 並發請求提升響應速度
+        # Run requests concurrently to improve responsiveness
         history_data, intraday_data = await asyncio.gather(
             asyncio.to_thread(fetcher.fetch_historical_data),
             asyncio.to_thread(fetcher.fetch_intraday_data)
         )
 
         if history_data.empty or intraday_data.empty:
-            await interaction.followup.send(f"無法取得 `{stock_ticker}` 的股票資料...\n> 請確認輸入的股票代碼是否正確，或該股票尚未加入本系統資料庫")
-            logger.warning(f"'{stock_ticker}' 資料取得失敗")
+            await interaction.followup.send(f"Could not retrieve data for `{stock_ticker}`...\n> Please check that the ticker is correct, or the stock may not be in the database yet")
+            logger.warning(f"Failed to retrieve data for '{stock_ticker}'")
             return
 
         latest_time = await asyncio.to_thread(fetcher.fetch_latest_time)
@@ -78,17 +78,18 @@ async def analyze_stock(interaction: discord.Interaction, ticker: str):
         intraday_buffer.close()
 
         await send_stock_response(interaction, snapshot, history_bytes, intraday_bytes)
-        logger.info(f"'{stock_ticker}' 訊息輸出成功")
+        logger.info(f"Response for '{stock_ticker}' sent successfully")
 
     except Exception as e:
-        logger.error(f"'{ticker}' 訊息輸出錯誤：{e}")
-        await interaction.followup.send("發生錯誤，請稍後再試或確認股票代碼是否正確。")
+        logger.error(f"Error sending response for '{ticker}': {e}")
+        await interaction.followup.send("An error occurred, please try again later or check that the ticker is correct.")
 
 
 STRATEGIES = {"RSI": RSIStrategy, "EMA": EMAStrategy}
-PERIODS = ["1mo", "3mo", "6mo", "1y", "2y", "3y", "5y", "10y", "max"]
+PERIODS = {"1mo": 30, "3mo": 90, "6mo": 180,
+           "1y": 365, "2y": 730, "3y": 1095, "5y": 1825, "10y": 3650}
 
-@bot.tree.command(name="backtest", description="輸入股票代碼進行策略回測並顯示圖表（僅支援台股美股與部份指數）")
+@bot.tree.command(name="backtest", description="Enter a ticker to run a strategy backtest and show a chart (TW/US stocks and some indices only)")
 @discord.app_commands.choices(
     strategy=[discord.app_commands.Choice(name=name, value=name) for name in STRATEGIES],
     period=[discord.app_commands.Choice(name=p, value=p) for p in PERIODS]
@@ -100,10 +101,10 @@ async def backtest_stock(interaction: discord.Interaction, ticker: str, strategy
         fetcher = StockDataFetcher(ticker)
         stock_ticker = fetcher.ticker
 
-        data = await asyncio.to_thread(fetcher.fetch_historical_data, period=period.value)
+        data = await asyncio.to_thread(fetcher.fetch_historical_data, days=PERIODS[period.value])
         if data.empty:
-            await interaction.followup.send(f"無法取得 `{stock_ticker}` 的歷史資料...\n> 請確認輸入的股票代碼是否正確，或該股票尚未加入本系統資料庫")
-            logger.warning(f"'{stock_ticker}' 資料取得失敗")
+            await interaction.followup.send(f"Could not retrieve historical data for `{stock_ticker}`...\n> Please check that the ticker is correct, or the stock may not be in the database yet")
+            logger.warning(f"Failed to retrieve data for '{stock_ticker}'")
             return
 
         engine = BacktestEngine()
@@ -115,11 +116,11 @@ async def backtest_stock(interaction: discord.Interaction, ticker: str, strategy
         chart_buffer.close()
 
         await send_backtest_response(interaction, result, strategy.name, chart_bytes)
-        logger.info(f"'{stock_ticker}' 回測結果輸出成功")
+        logger.info(f"Backtest result for '{stock_ticker}' sent successfully")
 
     except Exception as e:
-        logger.error(f"'{ticker}' 回測輸出錯誤：{e}")
-        await interaction.followup.send("發生錯誤，請稍後再試或確認股票代碼是否正確。")
+        logger.error(f"Error sending backtest for '{ticker}': {e}")
+        await interaction.followup.send("An error occurred, please try again later or check that the ticker is correct.")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

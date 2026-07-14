@@ -5,15 +5,15 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# 取得根目錄絕對路徑
+# Absolute path to the project root
 BASE_DIR = os.path.dirname(os.path.dirname((os.path.dirname(os.path.abspath(__file__)))))
 DB_PATH = os.path.join(BASE_DIR, 'stock_data.db')
 
 def init_database():
-    """初始化 SQLite 資料庫表格"""
+    """Initialize the SQLite database tables."""
     with sqlite3.connect(DB_PATH) as connect:
         cursor = connect.cursor()
-        # 股票基本資料表
+        # Stock master table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS stocks (
                 ticker TEXT PRIMARY KEY,
@@ -21,7 +21,7 @@ def init_database():
                 market TEXT
             )
         ''')
-        # 每日歷史價格表
+        # Daily historical price table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS daily_prices (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,31 +37,31 @@ def init_database():
                 UNIQUE(ticker, date)
             )
         ''')
-        # 建立複合索引提升查詢效率
+        # Composite index to speed up queries
         cursor.execute('''
-            CREATE INDEX IF NOT EXISTS index_ticker_date 
+            CREATE INDEX IF NOT EXISTS index_ticker_date
             ON daily_prices (ticker, date)
         ''')
         connect.commit()
-        
-    logger.info(f"資料庫已建立於 {DB_PATH}")
+
+    logger.info(f"Database created at {DB_PATH}")
 
 
 def insert_stock(ticker: str, name: str, market: str) -> None:
-    """新增或更新一檔股票基本資料"""
+    """Insert or update a single stock's master record."""
     with sqlite3.connect(DB_PATH) as connect:
         cursor = connect.cursor()
         cursor.execute('''
-            INSERT INTO stocks (ticker, name, market) 
+            INSERT INTO stocks (ticker, name, market)
             VALUES (?, ?, ?)
-            ON CONFLICT(ticker) DO UPDATE SET 
-                name=excluded.name, 
+            ON CONFLICT(ticker) DO UPDATE SET
+                name=excluded.name,
                 market=excluded.market
         ''', (ticker, name, market))
         connect.commit()
 
 def delete_stock(ticker: str) -> None:
-    """刪除一檔股票基本資料"""
+    """Delete a single stock's master record."""
     with sqlite3.connect(DB_PATH) as connect:
         cursor = connect.cursor()
         cursor.execute('''
@@ -73,101 +73,106 @@ def delete_stock(ticker: str) -> None:
         connect.commit()
 
 def get_stock(ticker: str) -> dict[str, Any] | None:
-    """查詢單一股票資料"""
+    """Query a single stock's master record."""
     with sqlite3.connect(DB_PATH) as connect:
-        connect.row_factory = sqlite3.Row  # 讓查詢結果能像字典一樣透過欄位名稱取值
+        connect.row_factory = sqlite3.Row  # Allow accessing columns by name like a dict
         cursor = connect.cursor()
         cursor.execute('SELECT * FROM stocks WHERE ticker = ?', (ticker,))
         row = cursor.fetchone()
         return dict(row) if row else None
 
-def get_daily_prices(ticker: str, limit: int = 30) -> list[dict[str, Any]]:
-    """取得指定股票的歷史價格"""
+def get_daily_prices(ticker: str, days: int = 30) -> list[dict[str, Any]]:
+    """Get historical prices for the given stock."""
     with sqlite3.connect(DB_PATH) as connect:
         connect.row_factory = sqlite3.Row
         cursor = connect.cursor()
         cursor.execute('''
-            SELECT date, open_price, high_price, low_price, close_price, volume 
-            FROM daily_prices 
-            WHERE ticker = ? 
+            SELECT date, open_price, high_price, low_price, close_price, adjust_close_price, volume
+            FROM daily_prices
+            WHERE ticker = ?
             ORDER BY date DESC LIMIT ?
-        ''', (ticker, limit))
+        ''', (ticker, days))
         return [dict(row) for row in cursor.fetchall()]
 
 
 def _menu_init_database():
     init_database()
-    print("資料庫初始化完成。")
+    print("Database initialization complete.")
 
 def _menu_insert_stock():
-    ticker = input("請輸入股票代號（如 2330.TW）: ").strip()
-    name   = input("請輸入股票名稱: ").strip()
-    market = input("請輸入市場（TW / TWO / US / INDEX）: ").strip()
+    ticker = input("Enter ticker (e.g. 2330.TW): ").strip()
+    name   = input("Enter stock name: ").strip()
+    market = input("Enter market (TW / TWO / US / INDEX): ").strip()
     insert_stock(ticker, name, market)
-    print(f"已新增/更新：{ticker} {name}")
+    print(f"Inserted/Updated: {ticker} {name}")
 
 def _menu_delete_stock():
-    ticker = input("請輸入要刪除的股票代號: ").strip()
-    confirm = input(f"確定要刪除 {ticker} 及其所有歷史價格？(y/N) ").strip().lower()
+    ticker = input("Enter the ticker to delete: ").strip()
+    confirm = input(f"Delete {ticker} and all its historical prices? (y/N) ").strip().lower()
     if confirm == 'y':
         delete_stock(ticker)
-        print(f"已刪除 {ticker}！")
+        print(f"Deleted {ticker}!")
     else:
-        print("已取消...")
+        print("Cancelled...")
 
 def _menu_get_stock():
-    ticker = input("請輸入股票代號: ").strip()
+    ticker = input("Enter ticker: ").strip()
     info = get_stock(ticker)
     if info:
-        print("\n[股票基本資料]")
+        print("\n[Stock master record]")
         for key, value in info.items():
             print(f"  {key:<8} : {value}")
     else:
-        print(f"查無 {ticker} 的基本資料...")
+        print(f"No master record found for {ticker}...")
 
 def _menu_get_prices():
-    ticker = input("請輸入股票代號: ").strip()
+    ticker = input("Enter ticker: ").strip()
     try:
-        limit = int(input("查詢筆數（預設 10）: ").strip() or "10")
+        days = int(input("Number of records (default 10): ").strip() or "10")
     except ValueError:
-        limit = 10
-    prices = get_daily_prices(ticker, limit=limit)
+        days = 10
+    prices = get_daily_prices(ticker, days=days)
     if prices:
-        print(f"\n[{ticker} 近期 {len(prices)} 筆價格]")
-        print(f"{'Date':<12} | {'Open':>8} | {'Close':>8} | {'Volume':>12}")
-        print("-" * 50)
+        print(f"\n[{ticker} latest {len(prices)} prices]")
+        print(f"{'Date':<12} | {'Open':>8} | {'Close':>8} | {'AdjClose':>8} | {'Volume':>12}")
+        print("-" * 60)
         for p in prices:
-            open_p  = p.get('open_price')  or 'N/A'
-            close_p = p.get('close_price') or 'N/A'
-            vol     = p.get('volume')      or 'N/A'
-            print(f"{p['date']:<12} | {str(f'{open_p:.2f}'):>8} | {str(f'{close_p:.2f}'):>8} | {str(f'{vol:.0f}'):>12}")
+            open_p  = p.get('open_price')
+            close_p = p.get('close_price')
+            adj_close_p = p.get('adjust_close_price')
+            vol     = p.get('volume')
+            open_s  = f'{open_p:.2f}'  if open_p  is not None else 'N/A'
+            close_s = f'{close_p:.2f}' if close_p is not None else 'N/A'
+            adj_close_s = f'{adj_close_p:.2f}' if adj_close_p is not None else 'N/A'
+            vol_s   = f'{vol:.0f}'     if vol     is not None else 'N/A'
+            print(f"{p['date']:<12} | {open_s:>8} | {close_s:>8} | {adj_close_s:>8} | {vol_s:>12}")
     else:
-        print(f"查無 {ticker} 的價格資料...")
+        print(f"No price data found for {ticker}...")
 
 _MENU = [
-    ("初始化資料庫", _menu_init_database),
-    ("新增 / 更新股票基本資料", _menu_insert_stock),
-    ("刪除股票", _menu_delete_stock),
-    ("查詢股票基本資料", _menu_get_stock),
-    ("查詢歷史價格", _menu_get_prices),
+    ("Initialize database", _menu_init_database),
+    ("Insert / Update stock master record", _menu_insert_stock),
+    ("Delete stock", _menu_delete_stock),
+    ("Query stock master record", _menu_get_stock),
+    ("Query historical prices", _menu_get_prices),
 ]
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     while True:
-        print("\n========== 股票資料庫管理 ==========")
+        print("\n========== Stock Database Manager ==========")
         for i, (label, _) in enumerate(_MENU, start=1):
             print(f"  {i}. {label}")
-        print("  0. 離開")
-        print("====================================J")
+        print("  0. Exit")
+        print("============================================")
 
-        choice = input("請選擇功能: ").strip()
+        choice = input("Choose an option: ").strip()
         if choice == "0":
-            print("再見！")
+            print("Goodbye!")
             break
         elif choice.isdigit() and 1 <= int(choice) <= len(_MENU):
             print()
             _MENU[int(choice) - 1][1]()
         else:
-            print("無效的選項，請重新輸入...")
+            print("Invalid option, please try again...")

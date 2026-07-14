@@ -1,10 +1,10 @@
 """
-系統進入點 (Entry Point)
-負責初始化環境設定、設定全域日誌格式
+Entry point.
+Initializes environment configuration and sets up the global logging format.
 """
 import logging
 
-# 配置全域日誌統一輸出格式
+# Configure a unified global logging format
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',

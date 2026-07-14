@@ -6,19 +6,19 @@ from typing import Literal
 
 @dataclass
 class Signal:
-    """買賣訊號以及策略紀錄"""
+    """A buy/sell signal along with the strategy conditions that produced it."""
     action: Literal["ENTER_LONG", "EXIT_LONG", "ENTER_SHORT", "EXIT_SHORT", "HOLD"]
-    conditions: dict[str, bool]  # 子條件是否成立
-    values: dict[str, float]     # 觸發時的指標數值
+    conditions: dict[str, bool]  # Whether each sub-condition holds
+    values: dict[str, float]     # Indicator values at trigger time
 
 @dataclass
 class Position:
-    """單次買賣的位置以及訊號"""
+    """An open position and the signal that opened it."""
     entry_date: date
     entry_price: float
     entry_signal: Signal
     side: Literal["LONG", "SHORT"]
-    
+
     def unrealized_pnl_ratio(self, price_now: float) -> float:
         if self.side == "LONG":
             return price_now / self.entry_price
@@ -29,7 +29,7 @@ class Position:
 
 @dataclass
 class Trade:
-    """紀錄執行單次交易的資料"""
+    """Record of a single completed round-trip trade."""
     ticker: str
     entry_date: date
     entry_price: float
@@ -38,7 +38,7 @@ class Trade:
     entry_signal: Signal
     exit_signal: Signal
     side: Literal["LONG", "SHORT"]
-    shares: int = 1  # 買賣股數
+    shares: int = 1  # Number of shares traded
 
     @property
     def profit_and_loss(self) -> float:
@@ -46,7 +46,7 @@ class Trade:
             return (self.exit_price - self.entry_price) * self.shares
         else:
             return (self.entry_price - self.exit_price) * self.shares
-    
+
     @property
     def return_on_investment(self) -> float:
         if self.side == "LONG":
@@ -61,11 +61,11 @@ class Trade:
 
 @dataclass
 class BacktestResult:
-    """一次完整回測的彙總結果"""
+    """Aggregated result of a single complete backtest run."""
     ticker: str
     trades: list[Trade]
     equity_curve: pd.Series  # index=date, value=netWorth
-    data: pd.DataFrame  # OHLCV 資料
+    data: pd.DataFrame  # OHLCV data
 
     @property
     def total_return(self) -> float:

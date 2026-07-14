@@ -11,13 +11,13 @@ STOP_LOSS = 0.15
 class BacktestEngine:
     def __init__(self) -> None:
         self.strategy = EMAStrategy()
-        self.cumulative_multiplier = 1.0  # 複利乘數
+        self.cumulative_multiplier = 1.0  # Compounding multiplier
         self.position: Position | None = None
         self.trades: list[Trade] = []
         self.equity: list[float] = []
 
     def run(self, ticker: str, data: pd.DataFrame) -> BacktestResult:
-        """逐日迭代歷史資料進行回測"""
+        """Iterate over historical data day by day to run the backtest."""
         self.cumulative_multiplier = 1.0
         self.position = None
         self.trades = []
@@ -57,15 +57,15 @@ class BacktestEngine:
                               "SHORT")
                 self.trades.append(trade)
                 self.position = None
-            
+
             elif signal.action == "HOLD":
                 pass
 
-            # 盤中止損，直接以止損價成交
+            # Intraday stop-loss: fill immediately at the stop price
             if self.position is not None:
                 if self.position.side == "LONG" and row['Low'] / self.position.entry_price < (1 - STOP_LOSS):
                     stop_price = self.position.entry_price * (1 - STOP_LOSS)
-                    stop_price = min(stop_price, price_open)  # 跳空開盤低於止損價時以開盤價成交
+                    stop_price = min(stop_price, price_open)  # Fill at the open if it gaps below the stop price
                     self.cumulative_multiplier *= stop_price / self.position.entry_price
                     exit_signal = Signal("EXIT_LONG",
                                          {"stop_loss": True},
@@ -80,7 +80,7 @@ class BacktestEngine:
 
                 elif self.position.side == "SHORT" and row['High'] / self.position.entry_price > (1 + STOP_LOSS):
                     stop_price = self.position.entry_price * (1 + STOP_LOSS)
-                    stop_price = max(stop_price, price_open)  # 跳空開盤高於止損價時以開盤價成交
+                    stop_price = max(stop_price, price_open)  # Fill at the open if it gaps above the stop price
                     self.cumulative_multiplier *= 2 - stop_price / self.position.entry_price
                     exit_signal = Signal("EXIT_SHORT",
                                          {"stop_loss": True},
@@ -92,15 +92,15 @@ class BacktestEngine:
                                   "SHORT")
                     self.trades.append(trade)
                     self.position = None
-                    
-            # 浮動損益
+
+            # Floating (unrealized) P&L
             pnl_ratio = self.position.unrealized_pnl_ratio(price_close) if self.position else 1.0
             self.equity.append(INITIAL_CAPITAL * self.cumulative_multiplier * pnl_ratio)
 
-            # 以今日收盤產生訊號明天使用
+            # Generate today's signal from the close, to be used the next day
             signal = self.strategy.signal(row, self.position)
 
-        # 回測結束強制平倉
+        # Force-close any open position at the end of the backtest
         if self.position is not None:
             last_price = data['Close'].iloc[-1]
             last_date = data.index[-1]
@@ -110,7 +110,7 @@ class BacktestEngine:
             else:
                 self.cumulative_multiplier *= 2 - last_price / self.position.entry_price
 
-            exit_signal = Signal("EXIT_LONG" if self.position.side == "LONG" else "EXIT_SHORT", 
+            exit_signal = Signal("EXIT_LONG" if self.position.side == "LONG" else "EXIT_SHORT",
                                 {"end_of_backtest": True},
                                 {})
             trade = Trade(ticker,
@@ -118,37 +118,37 @@ class BacktestEngine:
                         last_date.date(), last_price,
                         self.position.entry_signal, exit_signal,
                         self.position.side)
-            
+
             self.trades.append(trade)
             self.position = None
 
         equity_curve = pd.Series(self.equity, index=data.index)
         return BacktestResult(ticker, self.trades, equity_curve, data)
-    
+
     def print_backtest_result(self, result: BacktestResult) -> None:
-        """輸出回測結果"""
+        """Print the backtest result."""
         for trade in result.trades:
             print("-" * 50)
             if trade.side == "LONG":
                 print("LONG:")
-                print(f"買入 {trade.entry_date} @{trade.entry_price:.2f}  條件:{trade.entry_signal.conditions}  指標:{trade.entry_signal.values}")
-                print(f"賣出 {trade.exit_date} @{trade.exit_price:.2f}  條件:{trade.exit_signal.conditions}  指標:{trade.exit_signal.values}")
-                print(f"報酬率: {trade.return_on_investment:.2f}%")
+                print(f"Buy  {trade.entry_date} @{trade.entry_price:.2f}  conditions:{trade.entry_signal.conditions}  indicators:{trade.entry_signal.values}")
+                print(f"Sell {trade.exit_date} @{trade.exit_price:.2f}  conditions:{trade.exit_signal.conditions}  indicators:{trade.exit_signal.values}")
+                print(f"Return: {trade.return_on_investment:.2f}%")
             else:
                 print("SHORT:")
-                print(f"賣出 {trade.entry_date} @{trade.entry_price:.2f}  條件:{trade.entry_signal.conditions}  指標:{trade.entry_signal.values}")
-                print(f"買入 {trade.exit_date} @{trade.exit_price:.2f}  條件:{trade.exit_signal.conditions}  指標:{trade.exit_signal.values}")
-                print(f"報酬率: {trade.return_on_investment:.2f}%")
+                print(f"Sell {trade.entry_date} @{trade.entry_price:.2f}  conditions:{trade.entry_signal.conditions}  indicators:{trade.entry_signal.values}")
+                print(f"Buy  {trade.exit_date} @{trade.exit_price:.2f}  conditions:{trade.exit_signal.conditions}  indicators:{trade.exit_signal.values}")
+                print(f"Return: {trade.return_on_investment:.2f}%")
 
         print("=" * 50)
-        print(f"總報酬率：{result.total_return:.2f}%")
-        print(f"勝率：{result.win_rate:.2f}%")
-        print(f"最大回撤：{result.max_drawdown:.2f}%")
-        print(f"交易次數：{result.trade_count}")
-        print(f"初始資金: {result.equity_curve.iloc[0]:.2f}")
-        print(f"最後資金: {result.equity_curve.iloc[-1]:.2f}")
-        print(f"equity_curve 最小值: {result.equity_curve.min():.2f}")
-        print(f"equity_curve 最大值: {result.equity_curve.max():.2f}")
+        print(f"Total return: {result.total_return:.2f}%")
+        print(f"Win rate: {result.win_rate:.2f}%")
+        print(f"Max drawdown: {result.max_drawdown:.2f}%")
+        print(f"Trade count: {result.trade_count}")
+        print(f"Initial capital: {result.equity_curve.iloc[0]:.2f}")
+        print(f"Final capital: {result.equity_curve.iloc[-1]:.2f}")
+        print(f"Equity curve min: {result.equity_curve.min():.2f}")
+        print(f"Equity curve max: {result.equity_curve.max():.2f}")
         print("=" * 50)
 
 
@@ -163,50 +163,51 @@ if __name__ == "__main__":
         "1": ("RSI", RSIStrategy),
         "2": ("EMA", EMAStrategy),
     }
-    VALID_PERIODS = ["1mo", "3mo", "6mo", "1y", "2y", "3y", "5y", "10y", "max"]
+    PERIODS = {"1mo": 30, "2mo": 60, "3mo": 90, "4mo": 120, "5mo": 150, "6mo": 180, "8mo": 210, "10mo": 240,
+               "1y": 365, "2y": 730, "3y": 1095, "4y": 1460, "5y": 1825, "10y": 3650, "max": 36500}
 
     engine = BacktestEngine()
 
     while True:
         print("-" * 50)
         while True:
-            ticker = input("╎ 請輸入股票代號 (-1 結束)： ").strip()
+            ticker = input("╎ Enter a ticker (-1 to exit): ").strip()
             if ticker == "-1":
                 break
             fetcher = StockDataFetcher(ticker)
             if fetcher.check_stock_exist():
                 break
-            print(f"╎ 找不到股票 '{ticker}'，請確認代碼是否正確...")
+            print(f"╎ Stock '{ticker}' not found, please check the ticker...")
         if ticker == "-1":
             break
 
         ticker = fetcher.ticker
         name = fetcher.fetch_stock_name()
-        print(f"╎ 股票代號：{ticker}")
-        print(f"╎ 股票名稱：{name}")
+        print(f"╎ Ticker: {ticker}")
+        print(f"╎ Name: {name}")
 
         print("-" * 50)
         while True:
-            strategy_input = input("╎ 請選擇策略 [1=RSI, 2=EMA]: ").strip()
+            strategy_input = input("╎ Choose a strategy [1=RSI, 2=EMA]: ").strip()
             if strategy_input in STRATEGIES:
                 break
-            print(f"╎ 無效輸入，請重新輸入...")
+            print(f"╎ Invalid input, please try again...")
         strategy_label, strategy_cls = STRATEGIES[strategy_input]
         engine.strategy = strategy_cls()
-        print(f"╎ 使用策略：{strategy_label}")
+        print(f"╎ Strategy: {strategy_label}")
 
         print("-" * 50)
         while True:
-            period_input = input(f"╎ 請選擇回測期間 [{'/'.join(VALID_PERIODS)}]: ").strip()
-            if period_input in VALID_PERIODS:
+            period_input = input(f"╎ Choose a backtest period [{'/'.join(PERIODS)}]: ").strip()
+            if period_input in PERIODS:
                 break
-            print(f"╎ 無效期間，請重新輸入...")
-        print(f"╎ 回測期間：{period_input}")
+            print(f"╎ Invalid period, please try again...")
+        print(f"╎ Backtest period: {period_input}")
 
         print("-" * 50)
-        data = fetcher.fetch_historical_data(period=period_input)
+        data = fetcher.fetch_historical_data(days=PERIODS[period_input])
         if data.empty:
-            print(f"╎ 找不到 '{ticker}' 的歷史資料...")
+            print(f"╎ No historical data found for '{ticker}'...")
             continue
 
         result = engine.run(ticker, data)

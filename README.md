@@ -4,20 +4,20 @@
 ![Managed by uv](https://img.shields.io/badge/managed%20by-uv-purple)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-量化交易回測框架，用於驗證和評估股票交易策略。支援**雙向交易**（做多/做空）、**自訂策略**開發、**止損機制**與完整的績效評估指標（報酬率、勝率、最大回撤）。
+量化交易回測框架，用於驗證股票交易策略。支援**雙向交易**（做多／做空）、**自訂策略**、**止損機制**與績效指標（報酬率、勝率、最大回撤）。
 
 核心特性：
-- **累積倍率資產追蹤**：避免複利計算誤差，精確模擬資金曲線
-- **策略與引擎解耦**：輕鬆開發新策略，無需修改回測邏輯
-- **完整交易紀錄**：每筆交易的進出場時機、價格、信號條件、損益明細
-
-附贈 **Discord 查詢機器人**，快速查看股票技術指標、K 線圖與市場數據（支援台股、美股、全球指數）  
+- **累積倍率資產追蹤**：避免複利誤差，精確模擬資金曲線
+- **策略與引擎解耦**：新增策略無需改動回測邏輯
+- **完整交易紀錄**：每筆交易的進出場、價格、訊號條件與損益
+- **Discord 機器人**：可直接於 Discord 中執行指令並輸出 Embed
 
 <div>
   
   [![邀請機器人](https://img.shields.io/badge/邀請機器人到伺服器-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/oauth2/authorize?client_id=1494994206425612399)
   
-  <img src="./docs/image.png" width="300" alt="圖表頁面">
+  <img src="./docs/stock.png" height="300" alt="">
+  <img src="./docs/backtest.png" height="300" alt="">
 </div>
 
 ---
@@ -40,7 +40,7 @@ stock-bot/
 └── main.py           # 啟動入口
 ```
 
-完整類別關聯與方法簽章請見 [docs/UML.md](./docs/UML.md)
+各模組職責請見 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)，完整類別關聯與方法簽章請見 [docs/UML.md](./docs/UML.md)
 
 ---
 
@@ -110,22 +110,12 @@ python scripts/historical_backfill.py  # 回補歷史 K 線（需一段時間）
 python scripts/daily_updater.py
 ```
 
-### 啟動 Discord 機器人
+### 執行
 
 ```bash
-python src/bot/dc_bot.py
-```
-
-### 執行回測
-
-```bash
-python src/quant/backtest.py
-```
-
-### 操作資料庫
-
-```bash
-python src/database/database.py
+python src/bot/dc_bot.py         # 啟動 Discord 機器人
+python src/quant/backtest.py     # 執行回測（互動式）
+python src/database/database.py  # 操作資料庫（互動式）
 ```
 
 ---
@@ -147,27 +137,7 @@ python src/database/database.py
 | `BRK.B` | `BRK-B` | 波克夏 B 股（Yahoo Finance 格式轉換） |
 | `^GSPC` | `^GSPC` | S&P 500 指數 |
 
-### Discord `/stock` 指令資料流
-
-```
-使用者輸入 ticker
-    → StockDataFetcher._format_ticker()   # 補齊 .TW / .TWO 後綴
-    → asyncio.gather()                    # 並發：SQLite 歷史資料 + yfinance 盤中資料
-    → compute_indicators_for_discord()    # 計算 RSI(14)、MA5/10/20、漲跌幅，回傳 StockSnapshot
-    → asyncio.gather()                    # 並發：生成歷史 K 線圖 + 盤中分時圖
-    → send_stock_response()               # 組裝 Embed 並送出
-    → DiscordStockChart View              # 回傳 Embed + 可切換按鈕（5 分鐘逾時）
-```
-
-### Discord `/backtest` 指令資料流
-
-```
-使用者輸入 ticker、strategy、period
-    → StockDataFetcher.fetch_historical_data(period)  # 取得歷史 OHLCV
-    → BacktestEngine.run(ticker, data)                # 依策略逐日回測，回傳 BacktestResult
-    → generate_backtest_chart()                       # 繪製 K 線 + 進出場標記 + 權益曲線
-    → send_backtest_response()                        # 組裝績效指標 Embed 並附圖送出
-```
+> 各指令的內部資料流與模組職責請見 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
 
 ---
 
@@ -196,77 +166,3 @@ python src/database/database.py
 | `^N225` | 日經 225 |
 | `000001.SS` | 上證綜合 |
 | `^VIX` | 恐慌指數 |
-
----
-
-## 模組說明
-
-### `StockDataFetcher` (`src/data/fetcher.py`)
-
-整合三個資料源的查詢門面：
-- **SQLite**：歷史日線、股票名稱（本地快取）
-- **yfinance**：當日 1 分鐘盤中資料
-- **twstock**：台股代碼與市場別對照（上市 / 上櫃）
-
-### `compute_indicators` / `compute_indicators_for_discord` (`src/quant/indicator.py`)
-
-兩個函式刻意分離，對應不同的使用情境：
-
-| 函式 | 用途 | 回傳 |
-|------|------|------|
-| `compute_indicators(ticker, data, columns)` | 量化回測：依 `columns` 清單按需計算指標並原地寫入 DataFrame；`columns=None` 代表計算全套 | `None` |
-| `compute_indicators_for_discord()` | Discord 展示：計算 Embed 所需的指標，整合盤中現價與漲跌幅，回傳資料載體 | `StockSnapshot` |
-
-### `generate_history_chart` / `generate_intraday_chart` / `generate_backtest_chart` (`src/utils/visualizer.py`)
-
-生成 in-memory PNG 圖表：
-- **歷史日線圖**：K 線 + MA5/10/20 + 成交量
-- **盤中分時圖**：相對開盤價紅漲綠跌分色折線
-- **回測結果圖**：K 線 + 多空進出場標記 + 權益曲線
-
-### `DiscordStockChart` (`src/bot/dc_bot_view.py`)
-
-持有圖表 bytes 的 Discord `View` 元件，提供按鈕切換日線圖 / 分時圖，逾時 5 分鐘自動清理。
-
-### `send_stock_response` / `send_backtest_response` (`src/bot/dc_bot_view.py`)
-
-組裝並送出 Discord Embed：
-- `send_stock_response`：股票資訊 Embed + 可切換圖表 View
-- `send_backtest_response`：回測績效指標（總報酬率／勝率／最大回撤／交易次數）Embed + 回測圖表
-
-### `BacktestEngine` (`src/quant/backtest.py`)
-
-逐日迭代歷史 OHLCV 資料的回測引擎：
-- 初始化時接收一個 `Strategy` 實例，引擎與策略邏輯完全解耦
-- 讀取策略的 `required_columns`，只計算必要指標，`dropna` 也只針對這些欄位（避免因其他指標的 warm-up 期丟掉多餘資料）
-- 以 **pending signal** 模式逐根 K 棒執行策略
-- 支援做多與做空：透過 `cumulative_multiplier` 追蹤累積收益倍率，避免複利誤差
-- 回測結束若仍有未平倉部位，以最後一日收盤價強制平倉並計入交易紀錄
-- 回傳 `BacktestResult`，包含交易明細、資產曲線、總報酬率、勝率、最大回撤
-
-```
-每日迴圈：
-  1. 執行昨日收盤產生的 pending signal → 今日開盤價成交
-  2. 盤中止損檢查（同日即時執行，不走 pending）：成交價 = 止損價，若開盤已跳空則以開盤價成交
-  3. 今日收盤估算浮動損益，記錄 equity
-  4. Strategy.signal() 依今日收盤指標產生訊號（作為明日 pending）
-
-回測結束：未平倉部位 → 最後一日收盤強制平倉
-```
-
-### `Strategy` (`src/quant/strategy.py`)
-
-| 類別 | `required_columns` | 說明 |
-|------|--------------------|------|
-| `Strategy` | `[]`（抽象預設） | 抽象基底類別，子類別必須實作 `signal()`，並宣告 `required_columns` 告知引擎所需指標 |
-| `RSIStrategy` | `["RSI"]` | RSI 超買/ 超賣策略 |
-| `EMAStrategy` | `["EMA_5", "EMA_20"]` | EMA5/20 黃金交叉、死亡交叉策略 |
-
-### `Signal` / `Position` / `Trade` / `BacktestResult` (`src/models/trade.py`)
-
-| 類別 | 說明 |
-|------|------|
-| `Signal` | 策略訊號載體：`action`（ENTER_LONG / EXIT_LONG / ENTER_SHORT / EXIT_SHORT / HOLD）、`conditions`（各子條件是否成立）、`values`（觸發時的指標快照） |
-| `Position` | 持倉中的進場快照：進場日期、價格、進場 Signal、倉位方向（LONG/SHORT），供引擎計算浮動損益與建立 Trade；方法 `unrealized_pnl_ratio()` 回傳當前浮動損益倍率 |
-| `Trade` | 單筆交易紀錄：進出場日期、價格、股數、倉位方向、進出場訊號，計算屬性含 `profit_and_loss`、`return_on_investment`、`is_profit` |
-| `BacktestResult` | 回測彙總：持有 `trades` 列表、`equity_curve` 與原始 `data`（OHLCV），計算屬性含 `total_return`、`win_rate`、`max_drawdown`、`trade_count` |

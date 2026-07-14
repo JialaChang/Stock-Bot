@@ -11,13 +11,13 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 def import_taiwan_stocks(conn: sqlite3.Connection):
-    """從 twstock 套件的靜態列表，抓取所有台灣上市/上櫃市場的股票"""
-    logger.info("開始匯入台股資料...")
+    """Import all Taiwan listed/OTC stocks from the twstock package's static list."""
+    logger.info("Importing Taiwan stocks...")
     cursor = conn.cursor()
     count = 0
-    
+
     for code, info in twstock.codes.items():
-        # 過濾不相干金融商品，僅採納標準股票與 ETF
+        # Filter out unrelated financial products; keep only regular stocks and ETFs
         if info.type in ['股票', 'ETF']:
             if info.market == '上市':
                 ticker = f"{code}.TW"
@@ -33,17 +33,17 @@ def import_taiwan_stocks(conn: sqlite3.Connection):
                     market=excluded.market
             ''', (ticker, info.name, 'TW'))
             count += 1
-            
+
     conn.commit()
-    logger.info(f"成功匯入 {count} 檔台股！")
+    logger.info(f"Imported {count} Taiwan stocks!")
 
 def import_us_stocks(conn: sqlite3.Connection):
-    """從維基百科的公開表格爬取美股三大指數 (S&P 500 / DJIA / NASDAQ 100) 成分股"""
-    logger.info("開始匯入美股資料...")
+    """Scrape the constituents of the three major US indices (S&P 500 / DJIA / NASDAQ 100) from Wikipedia's public tables."""
+    logger.info("Importing US stocks...")
     cursor = conn.cursor()
     total_count = 0
 
-    # 定義目標維基百科網址與 DOM 內表格層級 (Table Index) 的映射配置
+    # Map each target Wikipedia URL to the table index within its DOM
     urls = {
         "S&P 500": {
             "url": 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies',
@@ -67,20 +67,20 @@ def import_us_stocks(conn: sqlite3.Connection):
 
     for index_name, config in urls.items():
         try:
-            logger.info(f"正在爬取 {index_name} 成分股...")
-            # 由於維基百科對 Default Bot 會進行攔截，需透過偽造 User-Agent 頭部進行繞過
+            logger.info(f"Scraping {index_name} constituents...")
+            # Wikipedia blocks default bots, so spoof a User-Agent header to get around it
             tables = pd.read_html(
-                config["url"], 
+                config["url"],
                 storage_options={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
             )
             data = tables[config["table_index"]]
 
-            # 清洗資料格式：將美股特殊的代碼如 BRK.B 轉成 Yahoo API 相容的 BRK-B
+            # Clean the data: convert US special tickers like BRK.B into the Yahoo-compatible BRK-B
             records = [
                 (str(row[config["ticker_col"]]).replace('.', '-'), str(row[config["name_col"]]), 'US')
                 for _, row in data.iterrows()
             ]
-            
+
             cursor.executemany('''
                 INSERT INTO stocks (ticker, name, market)
                 VALUES (?, ?, ?)
@@ -88,48 +88,48 @@ def import_us_stocks(conn: sqlite3.Connection):
                     name=excluded.name,
                     market=excluded.market
             ''', records)
-            
+
             conn.commit()
             count = len(records)
             total_count += count
-            logger.info(f"成功從 {index_name} 匯入 {count} 檔股票...")
-        
-        except Exception as e:
-            logger.error(f"{index_name} 匯入失敗：{e}")
+            logger.info(f"Imported {count} stocks from {index_name}...")
 
-    logger.info(f"成功匯入 {total_count} 檔美股！")
+        except Exception as e:
+            logger.error(f"Failed to import {index_name}: {e}")
+
+    logger.info(f"Imported {total_count} US stocks!")
 
 def import_global_indices(conn: sqlite3.Connection):
-    """硬編碼寫入全球重要大盤指數"""
-    logger.info("開始匯入全球重要大盤與核心指數...")
+    """Hard-code the major global market indices."""
+    logger.info("Importing major global and core market indices...")
     cursor = conn.cursor()
-    
+
     indices = {
-        # 美國與期權指標
-        '^GSPC': '標普 500 指數',
-        '^DJI': '道瓊工業指數',
-        '^IXIC': '那斯達克綜合指數',
-        '^SOX': '費城半導體指數',
-        '^VIX': '恐慌指數',
-        
-        # 亞太指數
-        '^TWII': '台灣加權指數',
-        '^TWOII': '台灣櫃買指數',
-        '^HSI': '香港恆生指數',
-        '000001.SS': '上證綜合指數',
-        '399001.SZ': '深證成指',
-        '^KS11': '韓國綜合指數',
-        '^N225': '日經 225 指數',
-        
-        # 歐洲指數
-        '^FTSE': '英國富時 100 指數',
-        '^GDAXI': '德國 DAX 指數',
-        '^FCHI': '法國 CAC 40 指數',
-        '^STOXX50E': '歐洲斯托克 50 指數'
+        # US and volatility benchmarks
+        '^GSPC': 'S&P 500 Index',
+        '^DJI': 'Dow Jones Industrial Average',
+        '^IXIC': 'NASDAQ Composite Index',
+        '^SOX': 'PHLX Semiconductor Index',
+        '^VIX': 'CBOE Volatility Index',
+
+        # Asia-Pacific indices
+        '^TWII': 'TAIEX (Taiwan Weighted Index)',
+        '^TWOII': 'Taipei Exchange (TPEx) Index',
+        '^HSI': 'Hang Seng Index',
+        '000001.SS': 'SSE Composite Index',
+        '399001.SZ': 'SZSE Component Index',
+        '^KS11': 'KOSPI Composite Index',
+        '^N225': 'Nikkei 225 Index',
+
+        # European indices
+        '^FTSE': 'FTSE 100 Index',
+        '^GDAXI': 'DAX Index',
+        '^FCHI': 'CAC 40 Index',
+        '^STOXX50E': 'EURO STOXX 50 Index'
     }
-    
+
     records = [(ticker, name, 'INDEX') for ticker, name in indices.items()]
-    
+
     cursor.executemany('''
         INSERT INTO stocks (ticker, name, market)
         VALUES (?, ?, ?)
@@ -137,12 +137,12 @@ def import_global_indices(conn: sqlite3.Connection):
             name=excluded.name,
             market=excluded.market
     ''', records)
-        
+
     conn.commit()
-    logger.info(f"成功匯入 {len(records)} 檔全球大盤指數！")
+    logger.info(f"Imported {len(records)} global market indices!")
 
 if __name__ == "__main__":
-    # 檢查資料庫
+    # Ensure the database exists
     init_database()
 
     try:
@@ -151,6 +151,6 @@ if __name__ == "__main__":
             import_taiwan_stocks(conn)
             import_us_stocks(conn)
             import_global_indices(conn)
-            logger.info("成功完成股票資料匯入！")
+            logger.info("Stock data import complete!")
     except Exception as e:
-        logger.error(f"資料匯入過程發生錯誤: {e}")
+        logger.error(f"Error during stock data import: {e}")
