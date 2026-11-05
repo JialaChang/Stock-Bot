@@ -1,3 +1,4 @@
+"""Incremental daily price update; schedule externally (e.g. cron) after market close."""
 import time
 import logging
 
@@ -16,12 +17,7 @@ MIN_BATCH_INTERVAL = 3  # Seconds between the starts of two consecutive download
 
 
 def update_stock_data() -> list[str]:
-    """Batch-download the latest prices from Yahoo Finance and upsert them into the local database.
-
-    Returns the tickers a few days of new rows cannot bring up to date — those whose
-    adjusted closes Yahoo has restated (dividend or split), and those whose stored
-    history stops before the download window. Both need a full re-fetch.
-    """
+    """Download the latest prices and upsert them. Returns tickers needing a full re-fetch."""
     logger.info("Starting daily stock data update...")
     stale_tickers: list[str] = []
 
@@ -33,14 +29,13 @@ def update_stock_data() -> list[str]:
 
             total_success = 0
 
-            # Request in batches to lower peak memory usage and avoid hitting the API rate limit
             for i in range(0, total_stocks, CHUNK_SIZE):
                 batch_started = time.monotonic()
                 success_count = 0
                 chunk_tickers = tickers[i : i + CHUNK_SIZE]
                 logger.info(f"Updating batch {i+1} ~ {min(i+CHUNK_SIZE, total_stocks)}...")
 
-                # Request several days to work around holidays, market closures, or timezone gaps returning empty for today
+                # Several days, so holidays and timezone gaps still return data
                 data = download_ohlcv(chunk_tickers, period="5d")
 
                 for ticker in chunk_tickers:
@@ -50,8 +45,7 @@ def update_stock_data() -> list[str]:
                             logger.warning(f"'{ticker}' download failed or has no valid latest data...")
                             continue
 
-                        # Check before writing: the upsert would overwrite the very
-                        # values the comparison relies on.
+                        # Before the upsert, which overwrites the values compared
                         if needs_full_refresh(conn, ticker, frame):
                             stale_tickers.append(ticker)
 
@@ -66,7 +60,6 @@ def update_stock_data() -> list[str]:
 
                 conn.commit()
                 logger.info(f"Batch write complete, wrote latest data for {success_count}/{len(chunk_tickers)} stocks!")
-                # Rate-limit between batches to avoid getting blocked by yfinance from too many consecutive requests
                 if i + CHUNK_SIZE < total_stocks:
                     time.sleep(max(0, MIN_BATCH_INTERVAL - (time.monotonic() - batch_started)))
 
@@ -80,10 +73,6 @@ def update_stock_data() -> list[str]:
 if __name__ == "__main__":
     stale = update_stock_data()
 
-    # needs_full_refresh() flags a ticker for either reason: a dividend/split restated
-    # Adj Close across the whole history, or the stored history has a gap the short
-    # update window can't reach back far enough to close. Either way, only a full
-    # re-fetch fixes it.
     if stale:
         from scripts.historical_backfill import backfill_history
 

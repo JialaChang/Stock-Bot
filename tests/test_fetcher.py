@@ -50,17 +50,16 @@ class TestTickerNormalization:
 
     @pytest.mark.parametrize("raw", ['9999.TW', '9999.TWO', '000001.SS', '399001.SZ', '7203.T', 'FOO.B'])
     def test_an_unseeded_dotted_ticker_is_passed_through_untouched(self, stock_db, raw):
-        # A dot is far more often a market suffix than a US share class. Rewriting it to a
-        # dash on a miss would corrupt every non-US market, the seeded SS/SZ indices included.
+        # A dot is usually a market suffix (.SS, .SZ), so a miss must not become a dash
         assert StockDataFetcher(raw).ticker == raw
 
 
 class TestExistenceLookup:
     def test_known_ticker(self, stock_db):
-        assert StockDataFetcher('spcx').check_stock_exist() is True
+        assert StockDataFetcher('spcx').stock_exists() is True
 
     def test_unknown_ticker(self, stock_db):
-        assert StockDataFetcher('zzzz').check_stock_exist() is False
+        assert StockDataFetcher('zzzz').stock_exists() is False
 
     def test_name_falls_back_to_the_ticker(self, stock_db):
         assert StockDataFetcher('spcx').fetch_stock_name() == 'SpaceX'
@@ -84,8 +83,7 @@ class TestAdjustedPriceReconstruction:
         assert (row['Open'], row['High'], row['Low'], row['Close']) == (100, 110, 90, 100)
 
     def test_a_zero_close_keeps_the_bar_raw_instead_of_producing_inf(self, stock_db):
-        # There is no ratio to apply, and adjusting only the close would push it
-        # outside the bar's own High/Low.
+        # Adjusting only the close would push it outside the bar's High/Low
         store_prices(stock_db, [('SPCX', '2026-01-02', 100, 110, 90, 0, 50, 1_000)])
 
         row = StockDataFetcher('SPCX').fetch_historical_data(days=3650).iloc[0]

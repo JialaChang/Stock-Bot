@@ -9,7 +9,7 @@ Side = Literal["LONG", "SHORT"]
 
 @dataclass
 class Signal:
-    """A buy/sell signal along with the strategy conditions that produced it."""
+    """A trading action and the conditions that produced it."""
     action: Literal["ENTER_LONG", "EXIT_LONG", "ENTER_SHORT", "EXIT_SHORT",
                     "REVERSE_LONG", "REVERSE_SHORT", "HOLD"]
     conditions: dict[str, bool]
@@ -28,7 +28,7 @@ class Position:
 
 @dataclass
 class Trade:
-    """Record of a single completed round-trip trade."""
+    """A completed round-trip trade."""
     ticker: str
     entry_date: date
     entry_price: float
@@ -41,7 +41,7 @@ class Trade:
 
     @property
     def profit_and_loss(self) -> float:
-        """Currency P&L, and the exact amount by which this trade moved the account's cash."""
+        """Currency P&L: exactly how much this trade moved cash."""
         if self.side == "LONG":
             return (self.exit_price - self.entry_price) * self.shares
         else:
@@ -49,7 +49,7 @@ class Trade:
 
     @property
     def return_on_investment(self) -> float:
-        """Percent return on the capital committed, derived from the P&L so the two agree."""
+        """Percent return on the capital committed."""
         committed = self.entry_price * self.shares
         if committed <= 0:
             return 0.0
@@ -62,11 +62,11 @@ class Trade:
 
 @dataclass
 class BacktestResult:
-    """Aggregated result of a single complete backtest run."""
+    """The result of one backtest run."""
     ticker: str
     trades: list[Trade]
-    equity_curve: pd.Series  # index=date, value=netWorth
-    data: pd.DataFrame  # OHLCV data
+    equity_curve: pd.Series  # Account value per day
+    data: pd.DataFrame  # The backtested OHLCV window
 
     @property
     def total_return(self) -> float:

@@ -4,15 +4,15 @@
 ![Managed by uv](https://img.shields.io/badge/managed%20by-uv-purple)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-量化交易回測框架，用於驗證股票交易策略。支援**雙向交易**（做多／做空）、**自訂策略**、**止損機制**與績效指標（報酬率、勝率、最大回撤）。
+量化交易回測框架，用來驗證股票交易策略。支援**做多與做空**、**自訂策略**、**停損**，並計算報酬率、勝率與最大回撤。
 
 核心特性：
-- **現金與整股記帳**：以現金加整股部位模擬資金曲線，零頭閒置形成真實的資金拖累
-- **策略與引擎解耦**：新增策略無需改動回測邏輯
-- **規則依角色組合**：趨勢作閘門、進場作觸發、出場相對持倉判讀
-- **完整交易紀錄**：每筆交易的進出場、價格、訊號條件與損益
-- **Discord 機器人**：可直接於 Discord 中執行指令並輸出 Embed
-- **HTTP API**：同一組運算以 JSON 提供，供網頁前端取用
+- **現金與整股記帳**：只買整股，買不滿一股的零頭留在現金，資金曲線貼近實際
+- **策略與引擎解耦**：新增策略不需要修改回測引擎
+- **規則依角色組合**：趨勢規則決定能做的方向，進場規則決定時機，出場規則決定何時離場
+- **完整交易紀錄**：每筆交易的進出場日期、價格、觸發條件與損益
+- **Discord 機器人**：在 Discord 中直接下指令查詢與回測
+- **HTTP API**：以 JSON 提供相同的資料，供網頁前端使用
 
 <div>
   
@@ -29,24 +29,24 @@
 ```
 stock-bot/
 ├── src/
-│   ├── api/          # HTTP API：路由、回應模型 & 應用程式進入點
-│   ├── bot/          # Discord 斜線指令 & UI 元件
-│   ├── data/         # 股票資料查詢（fetcher）與寫入同步（sync）
-│   ├── quant/        # 技術指標、規則、策略 & 回測引擎
-│   ├── database/     # 資料庫初始化與 CRUD（SQL 語句集中於 sql/*.sql）
+│   ├── api/          # HTTP API：路由與回應模型
+│   ├── bot/          # Discord 斜線指令與 UI 元件
+│   ├── data/         # 讀取資料（fetcher）與寫入資料（sync）
+│   ├── quant/        # 技術指標、規則、策略與回測引擎
+│   ├── database/     # 資料庫初始化與 CRUD（SQL 放在 sql/*.sql）
 │   ├── models/       # 共用資料類別
-│   └── utils/        # 圖表生成 & HTML 報表
+│   └── utils/        # 圖表與 HTML 報表
 ├── scripts/
-│   ├── seed_stocks.py           # 匯入台美股與全球指數基本清單
-│   ├── historical_backfill.py   # 回補歷史 K 線至資料庫
-│   └── daily_updater.py         # 更新每日數據至資料庫
+│   ├── seed_stocks.py           # 匯入台股、美股與全球指數清單
+│   ├── historical_backfill.py   # 回補歷史 K 線
+│   └── daily_updater.py         # 每日更新行情
 ├── docs/
-│   └── samples/      # README 連結的 HTML 報表範例與其產生器
-├── tests/            # 離線回歸測試（pytest）
-└── main.py           # 全域 logging 格式設定
+│   └── samples/      # HTML 報表範例與產生腳本
+├── tests/            # 離線測試（pytest）
+└── main.py           # 全域 logging 設定
 ```
 
-模組職責、方法簽章與指令資料流請見 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)，模組相依關係請見 [docs/UML.md](./docs/UML.md)
+模組職責與指令資料流請見 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)，模組相依關係請見 [docs/UML.md](./docs/UML.md)。
 
 ---
 
@@ -58,7 +58,7 @@ stocks (
     ticker           TEXT PRIMARY KEY,
     name             TEXT,
     market           TEXT,
-    last_backfilled  TEXT   -- 最後一次成功回補的時間戳，NULL 代表未回補
+    last_backfilled  TEXT   -- 最後一次成功回補的時間，NULL 代表尚未回補
 )
 
 -- 歷史日線（OHLCV）
@@ -76,11 +76,11 @@ daily_prices (
 )
 ```
 
-> **除權息調整**：查詢歷史資料時，系統以 `AdjClose / Close` 的比率回推開高低價，消除配息或股票分割造成的圖表跳空缺口。
+> **除權息調整**：讀取歷史資料時，以 `AdjClose / Close` 的比例換算開高低價，消除配息或分割造成的跳空。
+>
+> **重抓完整歷史**：Yahoo 每次除息或分割都會改寫**整段歷史**的 `Adj Close`。`daily_updater.py` 偵測到這種改寫，或發現資料中間有缺漏時，會改用 `historical_backfill.py` 重抓該檔股票的完整歷史。
 
-> **還原權值基準一致性**：Yahoo 每次除息或分割都會回頭改寫**整段歷史**的 `Adj Close`。因此 `daily_updater.py` 在寫入前會比對新舊還原收盤價，若偵測到基準改變或既有歷史的結束日早於下載區間，則將該檔股票交給 `historical_backfill.py` 重抓完整歷史。
-
-> 完整 schema 定義於 [src/database/sql/schema.sql](./src/database/sql/schema.sql)；跨模組共用的 SQL 皆以 `.sql` 檔集中於該目錄，由 `load_sql()` 載入。
+完整 schema 請見 [src/database/sql/schema.sql](./src/database/sql/schema.sql)。
 
 ---
 
@@ -94,34 +94,29 @@ daily_prices (
 ### 安裝
 
 ```bash
-# 安裝依賴，並將本專案以可編輯模式裝入虛擬環境
-uv sync
-
-# 建立 .env（參考下方欄位說明）
-cp .env.example .env
+uv sync                # 安裝依賴與專案本身
+cp .env.example .env   # 建立 .env
 ```
 
-`uv sync` 會一併安裝本專案本身，`src` 因此位於匯入路徑上，所有入口均可在任意工作目錄執行，無須任何 `sys.path` 操作。若出現 `ModuleNotFoundError: src`，重跑 `uv sync` 即可。
+若出現 `ModuleNotFoundError: src`，重新執行 `uv sync` 即可。機器人需要從專案根目錄啟動，才讀得到 `.env`。
 
-唯一的例外是 `.env`：其位置以工作目錄解析，故機器人需自專案根目錄啟動。
-
-`.env` 變數欄位：
+`.env` 欄位：
 
 | 變數 | 說明 |
 |------|------|
 | `DISCORD_TOKEN` | Discord Bot Token（從 [Discord Developer Portal](https://discord.com/developers/applications) 取得） |
-| `GUILD` | （選填）測試伺服器 ID，設定後斜線指令立即生效，省去全域同步的 1 小時等待 |
+| `GUILD` | （選填）測試伺服器 ID。設定後斜線指令會立即生效，不必等全域同步的約 1 小時 |
 
 ### 初始化資料庫
 
 ```bash
-python scripts/seed_stocks.py          # 寫入股票基本清單
-python scripts/historical_backfill.py  # 回補歷史 K 線（需一段時間）
+python scripts/seed_stocks.py          # 寫入股票清單
+python scripts/historical_backfill.py  # 回補歷史 K 線（需要一段時間）
 ```
 
-> 回補以 `stocks.last_backfilled` 判斷是否略過，只有成功寫入的股票才會蓋上時間戳，下載失敗的下次執行會自動重試。`backfill_history(force=True)` 可忽略時間戳強制全部重補。
+> 回補可以重複執行：最近補過的股票會略過，下載失敗的會在下次重試。`backfill_history(force=True)` 會全部重補。
 
-### 每日更新資料庫（建議使用工具排程）
+### 每日更新（建議用 cron 等工具排程）
 
 ```bash
 python scripts/daily_updater.py
@@ -131,29 +126,29 @@ python scripts/daily_updater.py
 
 ```bash
 python src/bot/dc_bot.py         # 啟動 Discord 機器人
-python src/quant/backtest.py     # 執行回測（CLI界面）
-python src/database/database.py  # 操作資料庫（CLI界面）
+python src/quant/backtest.py     # 互動式回測
+python src/database/database.py  # 互動式資料庫工具
 
-uv run uvicorn src.api.main:app --reload  # 啟動 HTTP API（--reload 為存檔自動重啟）
+uv run uvicorn src.api.main:app --reload  # 啟動 HTTP API（--reload：存檔後自動重啟）
 ```
 
-> **HTML 報表**：回測完成後可選擇匯出 HTML 績效報表；資料庫查詢超過 50 筆時自動改為匯出 HTML 報表。檔案輸出至 `exports/`
+> **HTML 報表**：回測完成後可以匯出 HTML 績效報表；資料庫查詢超過 50 筆時會自動改成匯出報表。檔案存放在 `exports/`。
 
-HTML 報表範例（台積電實際資料，可直接開啟檢視）：
+報表範例（台積電實際資料）：
 
-- [回測績效報表](https://htmlpreview.github.io/?https://raw.githubusercontent.com/JialaChang/Stock-Bot/main/docs/samples/backtest.html) — 績效指標與逐筆交易明細
-- [歷史價格報表](https://htmlpreview.github.io/?https://raw.githubusercontent.com/JialaChang/Stock-Bot/main/docs/samples/prices.html) — OHLCV 明細，收盤價依漲跌上色
+- [回測績效報表](https://htmlpreview.github.io/?https://raw.githubusercontent.com/JialaChang/Stock-Bot/main/docs/samples/backtest.html)：績效指標與每筆交易明細
+- [歷史價格報表](https://htmlpreview.github.io/?https://raw.githubusercontent.com/JialaChang/Stock-Bot/main/docs/samples/prices.html)：OHLCV 明細，收盤價依漲跌上色
 
-> 兩份範例由 `docs/samples/generate.py` 產生：從 yfinance 下載真實行情後，呼叫與正式流程相同的匯出函式，因此不會與程式行為脫節。
+> 範例由 `docs/samples/generate.py` 產生，使用的匯出函式和正式流程相同。
 
 ### 測試
 
 ```bash
-uv sync --dev   # 安裝含 pytest 的開發依賴
-uv run pytest   # 執行全部測試
+uv sync --dev   # 安裝開發依賴（含 pytest）
+uv run pytest
 ```
 
-測試全程離線：以 in-memory SQLite 與合成 OHLCV 資料驗證，不呼叫 yfinance，也不依賴本機的 `stock_data.db`，因此重建資料庫不影響測試結果。
+測試完全離線，不會連線到 yfinance，也不會讀取本機的 `stock_data.db`。
 
 ---
 
@@ -162,45 +157,43 @@ uv run pytest   # 執行全部測試
 | 指令 | 說明 |
 |------|------|
 | `/stock <ticker>` | 查詢股票資訊、技術指標與 K 線圖 |
-| `/backtest <ticker> <strategy> <period>` | 對指定股票執行策略回測，回傳績效指標與圖表（K 線 + 進出場標記 + 權益曲線） |
+| `/backtest <ticker> <strategy> <period>` | 執行策略回測，回傳績效指標與圖表（K 線、進出場標記、權益曲線） |
 
-> `/stock` 的盤中資料為選用：若遇到限流、網路錯誤或本身不提供分時的標的，仍會顯示日線圖與各項指標，切換按鈕標示為無法使用。
+> `/stock` 拿不到盤中資料時（例如被限流、網路錯誤，或該標的沒有分時資料），仍會顯示日線圖與指標，只是無法切換到分時圖。
 >
-> `/backtest` 會額外抓取指標暖身所需的歷史資料，暖身不佔用指定的回測區間；倘若資料不足時會回覆錯誤原因。
+> `/backtest` 會額外抓取指標暖身需要的資料，不會佔用你指定的回測區間；資料不足時會回覆原因。
 
 可選策略：
 
 | 策略 | 說明 |
 |------|------|
 | `RSI` | 單一指標：超賣進場、超買出場 |
-| `EMA` | 單一指標：EMA5/20 交叉，交叉同時平舊倉並開新倉 |
-| `Gated` | 依角色分為趨勢閘門、進場觸發與出場判定 |
-| `Vote` | 所有規則以等權投票合併，作為 `Gated` 的對照組 |
+| `EMA` | 單一指標：EMA5/20 交叉，交叉時平掉舊倉並反向開倉 |
+| `Gated` | 只在長期趨勢允許的方向，依進場訊號開倉 |
+| `Vote` | 所有規則等權投票，作為 `Gated` 的對照組 |
 
-輸入格式範例：
+代碼輸入範例：
 
 | 輸入 | 自動解析為 | 說明 |
 |------|-----------|------|
 | `2330` | `2330.TW` | 台積電（台股上市） |
 | `5274` | `5274.TWO` | 信驊（台股上櫃） |
 | `SPCX` | `SPCX` | SpaceX 美股 |
-| `nvda` | `NVDA` | 一律轉大寫後查詢，大小寫皆可 |
-| `BRK.B` | `BRK-B` | 波克夏 B 股，比對出清單中的 Yahoo 格式 |
+| `nvda` | `NVDA` | 不分大小寫 |
+| `BRK.B` | `BRK-B` | 波克夏 B 股，自動轉成 Yahoo 格式 |
 | `^GSPC` | `^GSPC` | S&P 500 指數 |
-
-> 各指令的內部資料流與模組職責請見 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
 
 ---
 
 ## HTTP API 說明
 
-供網頁前端取用的 JSON 介面，與 Discord 指令共用同一組資料與運算，僅回應形式不同。
+提供給網頁前端的 JSON 介面，和 Discord 指令使用相同的資料與運算。
 
 | 端點 | 說明 |
 |------|------|
-| `GET /api/stock/{ticker}` | 查詢股票快照：現價、前收、漲跌幅與 RSI |
+| `GET /api/stock/{ticker}` | 股票快照：現價、前收、漲跌幅與 RSI |
 
-> 回應只提供原始數值，格式化交由前端決定。錯誤代碼與序列化細節請見 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
+> 回應只有原始數值，顯示格式由前端決定。錯誤代碼請見 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)。
 
 ---
 
@@ -208,13 +201,13 @@ uv run pytest   # 執行全部測試
 
 ### 台灣股票
 
-- **上市（TSE）**：輸入純代碼，自動補齊 `.TW`
-- **上櫃（TPEX）**：輸入純代碼，自動補齊 `.TWO`
+- **上市（TWSE）**：輸入代碼即可，自動補上 `.TW`
+- **上櫃（TPEx）**：輸入代碼即可，自動補上 `.TWO`
 
 ### 美國股票
 
-- 直接輸入代碼（`SPCX`、`AAPL`、`NVDA` 等）
-- 股別代碼（如 `BRK.B`）以 Yahoo Finance 格式 `BRK-B` 收錄，兩種寫法皆可查詢
+- S&P 500 與 Nasdaq 100 成分股，直接輸入代碼（`AAPL`、`NVDA` 等）
+- 有股別的代碼（如 `BRK.B`）以 Yahoo 格式 `BRK-B` 收錄，兩種寫法都查得到
 
 ### 全球主要指數
 

@@ -33,9 +33,7 @@ class TestConnectDb:
         with connect_db() as conn:
             pass
 
-        # A closed connection is the point: sqlite3's own __exit__ ends the transaction
-        # but leaves the connection open, and its reference cycles keep it alive until
-        # the cyclic collector runs.
+        # sqlite3's own __exit__ ends the transaction but leaves the connection open
         with pytest.raises(sqlite3.ProgrammingError):
             conn.execute('SELECT 1')
 
@@ -62,8 +60,7 @@ class TestConnectDb:
         assert stored_stocks(db_path) == []
 
     def test_enforces_foreign_keys(self, db_path):
-        # PRAGMA foreign_keys is per connection, so it has to be set on every one:
-        # without it daily_prices would accept a ticker absent from stocks.
+        # PRAGMA foreign_keys is per connection, so every one must set it
         with pytest.raises(sqlite3.IntegrityError):
             with connect_db() as conn:
                 conn.execute(load_sql('upsert_daily_price'), PRICE_ROW)

@@ -10,7 +10,6 @@ from collections.abc import Generator
 
 logger = logging.getLogger(__name__)
 
-# Absolute path to the project root
 BASE_DIR = os.path.dirname(os.path.dirname((os.path.dirname(os.path.abspath(__file__)))))
 
 DB_PATH = os.path.join(BASE_DIR, 'stock_data.db')
@@ -30,7 +29,7 @@ def connect_db() -> Generator[sqlite3.Connection]:
     connect = sqlite3.connect(DB_PATH)
     connect.execute("PRAGMA foreign_keys = ON")
     try:
-        with connect:    # sqlite3's own __exit__: commit on success, rollback on error
+        with connect:    # Commit on success, rollback on error
             yield connect
     finally:
         connect.close()
@@ -51,7 +50,7 @@ def insert_stock(ticker: str, name: str, market: str) -> None:
 
 
 def delete_stock(ticker: str) -> None:
-    """Delete a single stock's master record."""
+    """Delete a stock and all its prices."""
     with connect_db() as connect:
         cursor = connect.cursor()
         cursor.execute('''
@@ -65,7 +64,7 @@ def delete_stock(ticker: str) -> None:
 def get_stock(ticker: str) -> dict[str, Any] | None:
     """Query a single stock's master record."""
     with connect_db() as connect:
-        connect.row_factory = sqlite3.Row  # Allow accessing columns by name like a dict
+        connect.row_factory = sqlite3.Row
         cursor = connect.cursor()
         cursor.execute('SELECT * FROM stocks WHERE ticker = ?', (ticker,))
         row = cursor.fetchone()
@@ -89,7 +88,6 @@ def _menu_init_database():
 def _menu_insert_stock():
     ticker = input("Enter ticker (e.g. 2330.TW): ").strip()
     name   = input("Enter stock name: ").strip()
-    # Listed vs. OTC is not a market: it lives in the .TW / .TWO suffix of the ticker.
     market = input("Enter market (TW / US / INDEX): ").strip()
     insert_stock(ticker, name, market)
     print(f"Inserted/Updated: {ticker} {name}")
@@ -127,7 +125,6 @@ def _menu_get_prices():
         print(f"No price data found for {ticker}...")
         return
 
-    # Export to an HTML report instead of flooding the terminal when the result set is large.
     if len(prices) > 50:
         _export_prices_html(ticker, prices)
         return
@@ -148,11 +145,11 @@ def _menu_get_prices():
 
 
 def _export_prices_html(ticker: str, prices: list[dict[str, Any]]):
-    """Write price records to a HTML report under the project's exports/ directory."""
+    """Write price records to an HTML report under exports/."""
     from src.utils.html_report import html_document, html_table, fmt_num, fmt_int, write_report
 
     rows = []
-    # Rows are newest-first; the previous trading day is the next row, used to color the change.
+    # Newest first, so the previous trading day is the next row
     for i, p in enumerate(prices):
         close_p = p.get('close_price')
         prev_close = prices[i + 1].get('close_price') if i + 1 < len(prices) else None
@@ -165,7 +162,7 @@ def _export_prices_html(ticker: str, prices: list[dict[str, Any]]):
             fmt_num(p.get('open_price')),
             fmt_num(p.get('high_price')),
             fmt_num(p.get('low_price')),
-            (fmt_num(close_p), cls),  # colored by daily change
+            (fmt_num(close_p), cls),
             fmt_num(p.get('adjust_close_price')),
             fmt_int(p.get('volume')),
         ])

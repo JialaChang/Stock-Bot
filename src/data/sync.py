@@ -10,12 +10,10 @@ from src.database import load_sql
 
 logger = logging.getLogger(__name__)
 
-TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M:%S'  # ISO order, so string comparison is time comparison
+TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M:%S'  # ISO order, so strings compare as times
 
-# Yahoo rewrites Adj Close for the whole history on every dividend and split,
-# so a stored value that no longer matches a freshly downloaded one for the same date
-# means everything older than the download window is on a stale basis.
-ADJ_DRIFT_TOLERANCE = 1e-4  # relative
+# Relative change in a stored Adj Close that means Yahoo restated the history
+ADJ_DRIFT_TOLERANCE = 1e-4
 
 OHLCV_COLUMNS = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
 
@@ -23,10 +21,7 @@ OHLCV_COLUMNS = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
 def download_ohlcv(tickers: list[str], period: str) -> pd.DataFrame:
     """Download unadjusted OHLCV plus Adj Close for a batch of tickers.
 
-    Network errors and rate limits are caught here rather than left to propagate:
-    both callers batch this over many chunks, and one failed chunk shouldn't abort
-    every later chunk. `extract_ticker_frame` already treats an empty frame as "no
-    data for this ticker", so returning one on failure needs no change downstream.
+    Returns an empty frame on failure, so one failed batch does not abort the rest.
     """
     try:
         data = yf.download(
@@ -46,13 +41,9 @@ def download_ohlcv(tickers: list[str], period: str) -> pd.DataFrame:
 
 
 def extract_ticker_frame(data: pd.DataFrame, ticker: str) -> pd.DataFrame:
-    """Pull one ticker's rows out of a yfinance batch download.
+    """Pull one ticker's rows out of a yfinance download, or an empty frame.
 
-    Returns an empty frame so callers check `.empty`.
-
-    yfinance returns flat columns for a single ticker and a MultiIndex for a batch,
-    but which one you get also depends on the version, so branch on the frame itself
-    rather than on how many tickers were requested.
+    Branches on the frame's columns, since flat vs MultiIndex depends on the yfinance version.
     """
     if data is None or data.empty:
         return pd.DataFrame()
@@ -60,8 +51,7 @@ def extract_ticker_frame(data: pd.DataFrame, ticker: str) -> pd.DataFrame:
     if isinstance(data.columns, pd.MultiIndex):
         if ticker not in data.columns.get_level_values(0):
             return pd.DataFrame()
-        # A MultiIndex top-level lookup returns a DataFrame cross-section at runtime,
-        # but the type stubs only model a plain-Hashable key as a single-column Series.
+        # The stubs type this as a Series; at runtime it is a DataFrame
         frame = cast(pd.DataFrame, data[ticker])
     else:
         frame = data
@@ -101,11 +91,7 @@ def fetch_pending_tickers(conn: sqlite3.Connection, max_age_days: int) -> list[s
 
 
 def mark_backfilled(conn: sqlite3.Connection, tickers: list[str]) -> None:
-    """Stamp tickers whose history was written successfully.
-
-    Only stamp on success: an unstamped ticker is retried on the next run, which is
-    how a failed download recovers on its own.
-    """
+    """Stamp tickers written successfully. Unstamped ones are retried next run."""
     if not tickers:
         return
     now = datetime.now().strftime(TIMESTAMP_FORMAT)
@@ -116,21 +102,14 @@ def mark_backfilled(conn: sqlite3.Connection, tickers: list[str]) -> None:
 
 
 def needs_full_refresh(conn: sqlite3.Connection, ticker: str, frame: pd.DataFrame) -> bool:
-    """Report whether a short update leaves this ticker's stored history inconsistent.
+    """Whether this ticker needs a full re-fetch rather than a short update.
 
-    Two cases, both of which a few days of new rows cannot repair:
+    * Restated Adj Close: a dividend or split rewrote the whole history, so older
+      stored rows are on a stale basis.
+    * A gap: the stored history stops before the download window.
 
-    * **Restated adjusted closes.** A dividend or split makes Yahoo rewrite Adj Close
-      all the way back through the history. Rows inside the download window get
-      corrected by the upsert, but every older row keeps the pre-event basis, which
-      shows up as a fake gap in the adjusted price series.
-    * **A hole in the history.** If the updater has not run for longer than the
-      download window, the days in between are missing entirely, and no later run
-      will ever go back for them.
-
-    Note the drift check only sees dates the download and the database have in
-    common, which is why the hole check has to come first: with no overlap there is
-    nothing to compare, and that is exactly when the data is most likely stale.
+    The gap check runs first: with no overlapping dates the drift check has nothing to compare.
+    Call this before the upsert, which overwrites the values being compared.
     """
     dates = sorted(index.strftime('%Y-%m-%d') for index in frame.index)
     if not dates:
@@ -141,7 +120,7 @@ def needs_full_refresh(conn: sqlite3.Connection, ticker: str, frame: pd.DataFram
     row = cursor.fetchone()
     latest_stored = row[0] if row else None
     if latest_stored is None:
-        return False  # Nothing stored yet; a plain insert is all this ticker needs
+        return False  # Nothing stored yet
 
     if latest_stored < dates[0]:
         logger.info(

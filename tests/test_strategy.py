@@ -1,8 +1,4 @@
-"""Strategy decisions in isolation.
-
-`signal()` is called directly with hand-built indicator frames, so a case is one
-exact pair of bars rather than a price series reverse-engineered to produce one.
-"""
+"""Strategy decisions in isolation, on hand-built indicator frames."""
 from datetime import date
 
 import pandas as pd
@@ -25,12 +21,7 @@ def holding(side):
 
 
 def replay(*bars, strategy=None, position=None):
-    """Feed the bars to a strategy one at a time and return the action from each.
-
-    Needed wherever a case only exists as a sequence: a strategy that carries state cannot
-    be judged from a single call. The engine's own `history_window` does the slicing, so
-    these tests cannot drift into exercising a wider view than the engine ever hands over.
-    """
+    """Feed the bars to a strategy via the engine's `history_window` and return each action."""
     strategy = strategy or EMAStrategy()
     history = ema_history(*bars)
     return [strategy.signal(history_window(history, i, strategy.lookback), position).action
@@ -84,8 +75,7 @@ class TestEMAReversal:
 
 class TestEMALifecycle:
     def test_reset_reaches_the_rule_holding_the_state(self):
-        # The strategy owns no state of its own; forgetting to forward `reset()` would
-        # leave the second run carrying the order the first one ended on.
+        # `reset()` must reach the cross rule, or the second run inherits its state
         strategy = EMAStrategy()
         assert replay((99, 100), (101, 100), strategy=strategy) == ["HOLD", "ENTER_LONG"]
 

@@ -11,9 +11,7 @@ INITIAL_CAPITAL = 100_000
 STOP_LOSS = 0.15
 MIN_BACKTEST_ROWS = 2  # Fewer usable rows than this cannot produce a signal and a fill
 
-# Canonical backtest periods in calendar days.
-# The Discord command exposes a subset of these keys;
-# both entry points must read the mapping from here so the two cannot drift apart.
+# Backtest periods in calendar days. The bot exposes a subset of these keys.
 PERIOD_DAYS = {
     "1mo": 30, "2mo": 60, "3mo": 90, "4mo": 120, "5mo": 150, "6mo": 180,
     "7mo": 210, "8mo": 240, "9mo": 270, "10mo": 300, "11mo": 330, "12mo": 360,
@@ -24,12 +22,10 @@ PERIOD_DAYS = {
 
 
 def history_window(data: pd.DataFrame, i: int, lookback: int | None) -> pd.DataFrame:
-    """The rows a strategy is shown on bar `i`: at most `lookback` of them, ending at `i`.
+    """At most `lookback` rows ending at bar `i` (None: everything up to `i`).
 
-    The end is exclusive at `i + 1`, so today is included and tomorrow cannot be — which is
-    what makes lookahead bias structurally impossible rather than a rule strategies must
-    follow. `max` clamps the start at row 0, since a negative start would count from the end
-    and hand over an empty frame. A `lookback` of None asks for everything up to today.
+    Ending at `i + 1` makes lookahead impossible. The start is clamped at 0 because a
+    negative start would count from the end.
     """
     lo = 0 if lookback is None else max(0, i + 1 - lookback)
     return data.iloc[lo:i + 1]
@@ -44,29 +40,20 @@ class BacktestEngine:
         self.equity: list[float] = []
 
     def required_history_days(self, period_days: int) -> int:
-        """Calendar days of history to fetch so `period_days` can be backtested in full.
+        """Calendar days to fetch so `period_days` can be backtested in full.
 
-        Indicators need `strategy.warmup` trading rows before their first valid value.
-        Fetching only the requested window would spend that warm-up inside the window
-        and shorten (or empty) the actual backtest, so ask for the warm-up on top.
-
-        The two requirements stack rather than overlap: `lookback` counts rows that
-        already carry indicator values, so the strategy needs `lookback - 1` of them
-        before the window opens, on top of the raw rows the warm-up itself eats.
-        A `lookback` of None asks for whatever exists and guarantees nothing extra.
+        Warm-up and lookback stack: the lookback rows must already carry indicator
+        values, so both are fetched on top of the period.
         """
         lookback_rows = self.strategy.lookback or 1
-        preroll_rows = self.strategy.warmup + lookback_rows - 1  # - 1: the lookback counts today itself
-        preroll_calendar_days = math.ceil(preroll_rows * 7 / 5) # 5 trading days per week
-        return period_days + preroll_calendar_days + 7  # +1 week for buffer
+        preroll_rows = self.strategy.warmup + lookback_rows - 1  # the lookback includes today
+        preroll_calendar_days = math.ceil(preroll_rows * 7 / 5)
+        return period_days + preroll_calendar_days + 7  # one week of buffer
 
     def run(self, ticker: str, data: pd.DataFrame, start: date_type | pd.Timestamp | None = None) -> BacktestResult:
-        """Iterate over historical data day by day to run the backtest.
+        """Run the backtest day by day from `start`.
 
-        `start` marks where the reported backtest begins. Earlier rows are kept rather
-        than dropped: they no longer count as backtested days, but a strategy's lookback
-        still reaches into them, so the window's first bar sees the same history any
-        later bar would.
+        Rows before `start` are not backtested but stay reachable by the lookback.
         """
         self.cash = float(INITIAL_CAPITAL)
         self.position = None
@@ -78,10 +65,7 @@ class BacktestEngine:
         compute_indicators(ticker, data, self.strategy.required_columns)
         data = data.dropna(subset=self.strategy.required_columns)
 
-        # Two frames: `data` keeps the valid-indicator rows sitting before the window (the NaN
-        # warm-up went with the dropna above), so a lookback slice at the window's first bar can
-        # still reach back past `start`; `window` is the range actually backtested and reported.
-        # `start_pos` is an integer position so a lookback slice can dip below the window.
+        # `data` keeps the rows before `start` for the lookback; `window` is what gets reported.
         start_pos = int(data.index.searchsorted(pd.Timestamp(start))) if start is not None else 0
         window = data.iloc[start_pos:]
 
@@ -120,7 +104,7 @@ class BacktestEngine:
             elif signal.action == "HOLD":
                 pass
 
-            # Intraday stop-loss: fill immediately at the stop price
+            # Intraday stop-loss
             if self.position is not None:
                 if self.position.side == "LONG" and row['Low'] / self.position.entry_price < (1 - STOP_LOSS):
                     stop_price = self.position.entry_price * (1 - STOP_LOSS)
@@ -134,13 +118,10 @@ class BacktestEngine:
 
             self.equity.append(self._mark_to_market(price_close))
 
-            # Generate today's signal from the close, to be used the next day. The window is
-            # cut from `data` rather than `window` so the rows before the backtest window stay
-            # reachable on its opening bars.
+            # Signal on today's close, filled at tomorrow's open
             history = history_window(data, i, self.strategy.lookback)
             signal = self.strategy.signal(history, self.position)
 
-        # Force-close any open position at the end of the backtest
         if self.position is not None:
             exit_signal = Signal("EXIT_LONG" if self.position.side == "LONG" else "EXIT_SHORT",
                                  {"End of backtest": True},
@@ -160,16 +141,11 @@ class BacktestEngine:
         return self.cash - self.position.shares * price
 
     def _open_position(self, date: pd.Timestamp, price: float, signal: Signal, side: Side) -> None:
-        """Open the largest whole-share position the cash allows, at `price`.
-
-        Whole shares mean a leftover that stays in cash, and a price above the whole account
-        means no trade at all rather than a fractional one. Sizing a short off cash alone is
-        what makes it unleveraged and fully funded: the collateral is the entire account.
-        """
+        """Open the largest whole-share position the cash allows. Shorts are unleveraged."""
         if not price > 0:
             return
         shares = int(self.cash // price)
-        if shares <= 0:  # Cannot afford a single share; skip the trade
+        if shares <= 0:
             return
         self.cash += -shares * price if side == "LONG" else shares * price
         self.position = Position(date.date(), price, signal, side, shares)
@@ -214,7 +190,6 @@ class BacktestEngine:
             reasons = [name for name, holds in sig.conditions.items() if holds]
             return ', '.join(reasons) if reasons else 'N/A'
 
-        # --- Performance summary ---
         total_ret = result.total_return
         summary_rows = [
             ['Total return', (f'{total_ret:+.2f}%', signed_class(total_ret))],
@@ -228,7 +203,6 @@ class BacktestEngine:
         ]
         summary_table = html_table(None, summary_rows)
 
-        # --- Per-trade table ---
         trade_rows = []
         for t in result.trades:
             roi = t.return_on_investment
@@ -288,7 +262,7 @@ if __name__ == "__main__":
             if ticker == "-1":
                 break
             fetcher = StockDataFetcher(ticker)
-            if fetcher.check_stock_exist():
+            if fetcher.stock_exists():
                 break
             print(f"╎ Stock '{ticker}' not found, please check the ticker...")
         if ticker == "-1":
@@ -319,7 +293,6 @@ if __name__ == "__main__":
         print(f"╎ Backtest period: {period_input}")
 
         print("-" * 50)
-        # Fetch extra history for the indicator warm-up, then backtest only from `start`
         period_days = PERIOD_DAYS[period_input]
         start = datetime.now() - timedelta(days=period_days)
         data = fetcher.fetch_historical_data(days=engine.required_history_days(period_days))

@@ -1,10 +1,6 @@
-"""
-Entry point.
-Initializes environment configuration and sets up the global logging format.
-"""
+"""Global logging configuration. Not the app entry point."""
 import logging
 
-# Configure a unified global logging format
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',

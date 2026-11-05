@@ -5,14 +5,11 @@ import pandas_ta as pta
 from src.quant.errors import InsufficientDataError
 
 
-MACD_Z_WINDOW = 60  # Rows the MACD line's own scale is measured over, one quarter of trading
+MACD_Z_WINDOW = 60  # Rows the MACD line's scale is measured over
 
 
 def compute_indicators(ticker: str, data: pd.DataFrame, columns: list[str] | None = None) -> None:
-    """
-    For quantitative backtesting: write technical indicators in place into the given DataFrame.\n
-    `columns` selects which indicators to compute; None means compute everything.
-    """
+    """Write indicators into `data` in place. `columns=None` computes all of them."""
     if len(data) < 2:
         raise InsufficientDataError(f"'{ticker}' has fewer than two historical rows and cannot be processed...")
 
@@ -26,14 +23,10 @@ def compute_indicators(ticker: str, data: pd.DataFrame, columns: list[str] | Non
         return need is None or bool(need & set(cols))
 
     # ── RSI ───────────────────────────────────────────────────
-    # Relative strength of recent gains vs. losses, ranges 0–100.
-    # > 70 overbought, < 30 oversold.
     if should('RSI'):
         data['RSI'] = pta.rsi(close, length=14)
 
-    # ── SMA (moving average) ──────────────────────────────────
-    # Simple moving average, smooths short-term noise and shows trend direction.
-    # MA5 short-term, MA10 mid-term, MA20 monthly, MA60 quarterly.
+    # ── SMA ───────────────────────────────────────────────────
     if should('SMA_5'):
         data['SMA_5'] = pta.sma(close, length=5)
     if should('SMA_10'):
@@ -45,8 +38,7 @@ def compute_indicators(ticker: str, data: pd.DataFrame, columns: list[str] | Non
     if should('SMA_200'):
         data['SMA_200'] = pta.sma(close, length=200)
 
-    # ── EMA (moving average) ──────────────────────────────────
-    # Exponential moving average, weights recent prices more and reacts faster to moves.
+    # ── EMA ───────────────────────────────────────────────────
     if should('EMA_5'):
         data['EMA_5'] = pta.ema(close, length=5)
     if should('EMA_10'):
@@ -58,45 +50,28 @@ def compute_indicators(ticker: str, data: pd.DataFrame, columns: list[str] | Non
     if should('EMA_200'):
         data['EMA_200'] = pta.ema(close, length=200)
 
-    # ── MACD ───────────────────────────────────────────────────
-    # Difference between two EMAs, measures momentum strength and direction changes.
-    # DIF Line = EMA(12) - EMA(26)
-    # DEM Line = EMA(MACD, 9)
-    # OSC (histogram) = DIF - DEM
-    # Golden cross (DIF crosses above DEM) is a buy signal;
-    # death cross (DIF crosses below DEM) is a sell signal.
-    # Crosses above the zero line are stronger than below;
-    # OSC bar flipping negative to positive means momentum turns bullish.
-
-    # Z is DIF in its own recent standard deviations, comparable across tickers and price
-    # levels. Not mean-centred on purpose: the zero line is the reference that carries meaning.
+    # ── MACD ──────────────────────────────────────────────────
+    # DIF = EMA(12) - EMA(26), DEM = EMA(DIF, 9), OSC = DIF - DEM.
+    # Z is DIF in its own rolling standard deviations, not mean-centred: zero is the reference.
     if should('MACD_dif', 'MACD_dem', 'MACD_osc', 'MACD_z'):
         macd_df = pta.macd(close, fast=12, slow=26, signal=9)
         data['MACD_dif'] = macd_df['MACD_12_26_9']
         data['MACD_dem'] = macd_df['MACDs_12_26_9']
         data['MACD_osc'] = macd_df['MACDh_12_26_9']
         scale = data['MACD_dif'].rolling(MACD_Z_WINDOW).std()
-        # A flat stretch has no scale to divide by; `== 0` spares the leading NaNs for warm-up.
+        # A flat stretch has zero scale; `== 0` leaves the warm-up NaNs alone.
         data['MACD_z'] = (data['MACD_dif'] / scale).mask(scale == 0, 0.0)
 
-    # ── Stochastic Oscillator (KD) ──────────────────────────────
-    # Position of the close within the recent 9-day high/low range.
-    # K > 80 overbought, K < 20 oversold.
-    # A golden cross (K crosses above D) is only meaningful at lows; a death cross only at highs.
+    # ── Stochastic (KD) ───────────────────────────────────────
     if should('STOCH_K', 'STOCH_D'):
         stoch_df = pta.stoch(high, low, close, k=9, d=3, smooth_k=3)
         data['STOCH_K'] = stoch_df['STOCHk_9_3_3']
         data['STOCH_D'] = stoch_df['STOCHd_9_3_3']
 
-    # ── Bollinger Bands ─────────────────────────────────────────
-    # Middle band = SMA(20); upper/lower bands are ±2 standard deviations.
-    # Touching the lower band hints at a bounce, touching the upper band at a pullback.
-    # A narrowing bandwidth signals an imminent large move.
+    # ── Bollinger Bands ───────────────────────────────────────
     if should('BB_U', 'BB_M', 'BB_L', 'BB_W'):
         bb_df = pta.bbands(close, length=20, std=2)
         data['BB_U'] = bb_df['BBU_20_2.0_2.0']
         data['BB_M'] = bb_df['BBM_20_2.0_2.0']
         data['BB_L'] = bb_df['BBL_20_2.0_2.0']
         data['BB_W'] = bb_df['BBB_20_2.0_2.0']
-
-

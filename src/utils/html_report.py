@@ -12,42 +12,37 @@ _TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'templates', 'report.ht
 _EXPORT_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'exports')
 
-# A table cell is either plain text, or (text, css_class) to color it (e.g. 'up' / 'down').
+# Plain text, or (text, css_class) such as 'up' / 'down'
 Cell = str | tuple[str, str]
 
-# Anything outside this set is replaced, so a ticker cannot steer the path out of exports/.
+# Keeps a ticker from steering the path out of exports/
 _UNSAFE_IN_FILENAME = re.compile(r'[^A-Za-z0-9._-]')
 
 
 def _esc(value: Any) -> str:
-    """Escape a value for insertion into HTML. Callers never write entities by hand."""
+    """Escape a value for HTML."""
     return html.escape(str(value), quote=True)
 
 
 @lru_cache(maxsize=1)
 def _template() -> Template:
-    """Load and cache the report template ($title / $meta / $body placeholders)."""
+    """The report template, with $title / $meta / $body placeholders."""
     with open(_TEMPLATE_PATH, encoding='utf-8') as f:
         return Template(f.read())
 
 
 def fmt_num(v: Any, decimals: int = 2) -> str:
-    """Format a numeric value to a fixed number of decimals, or 'N/A' when missing."""
+    """Fixed decimals, or 'N/A'."""
     return f'{v:.{decimals}f}' if v is not None else 'N/A'
 
 
 def fmt_int(v: Any) -> str:
-    """Format an integer value with thousands separators, or 'N/A' when missing."""
+    """Thousands separators, or 'N/A'."""
     return f'{v:,.0f}' if v is not None else 'N/A'
 
 
 def html_table(headers: list[str] | None, rows: list[list[Cell]]) -> str:
-    """Build a ``<table>`` from data.
-
-    ``headers`` renders a sticky ``<thead>`` (pass ``None`` for a headerless table).
-    Each cell in ``rows`` is plain text, or a ``(text, css_class)`` tuple to color it.
-    Headers and cells are escaped, so pass them as plain text.
-    """
+    """Build a ``<table>``. ``headers=None`` omits the header row; all text is escaped."""
     parts = ['<table>']
     if headers:
         head = ''.join(f'<th>{_esc(h)}</th>' for h in headers)
@@ -68,12 +63,7 @@ def html_table(headers: list[str] | None, rows: list[list[Cell]]) -> str:
 
 
 def html_document(title: str, body: str, *, subtitle: str | None = None) -> str:
-    """Inject ``body`` into the shared report template.
-
-    ``title`` is used for both the browser tab and the heading; ``subtitle`` renders as
-    muted meta text just below the heading. Both are escaped; ``body`` is the only
-    parameter taken as raw HTML, and is meant to come from ``html_table``.
-    """
+    """Fill the report template. ``body`` is raw HTML (from ``html_table``); the rest is escaped."""
     meta = f'<div class="meta">{_esc(subtitle)}</div>' if subtitle else ''
     return _template().substitute(title=_esc(title), meta=meta, body=body)
 

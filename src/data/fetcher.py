@@ -15,7 +15,7 @@ TW_CODES = twstock.codes
 
 
 class StockDataFetcher:
-    """Stock query service that unifies three data sources: SQLite / yfinance / twstock."""
+    """Read facade over SQLite, yfinance and twstock."""
     def __init__(self, ticker: str):
         self._raw_ticker = ticker
         self.ticker = self._format_ticker(ticker)
@@ -23,14 +23,12 @@ class StockDataFetcher:
         self.intraday_data = None
 
     def _format_ticker(self, ticker: str) -> str:
-        """Normalize user input into Yahoo Finance format. Lookup order: local DB -> twstock -> raw input."""
+        """Normalize input to Yahoo format. Lookup order: DB -> twstock -> raw input."""
         ticker = ticker.strip().upper()
         try:
-            # Strip any existing suffix
             base_code = ticker.split(".")[0]
 
-            # First try to find a matching full ticker in the database.
-            # The dash form is a candidate only: Yahoo writes a US share class as BRK-B and seed_stocks stores it that way
+            # The dash form (BRK-B) is only a lookup candidate, never a constructed return value
             candidates = [ticker, f"{base_code}.TW", f"{base_code}.TWO"]
             if '.' in ticker:
                 candidates.append(ticker.replace('.', '-'))
@@ -44,21 +42,20 @@ class StockDataFetcher:
                 if result:
                     return result[0]
 
-            # If not found in the database, fall back to a twstock lookup
             if base_code in TW_CODES:
                 market = TW_CODES[base_code].market
                 if market == '上市':
                     return f"{base_code}.TW"
                 if market == '上櫃':
                     return f"{base_code}.TWO"
-                # Emerging-board and other boards have no Yahoo suffix to map to
+                # Other boards have no Yahoo suffix
             return ticker
 
         except Exception as e:
             logger.warning(f"Failed to process ticker '{ticker}': {e}")
             return ticker
 
-    def check_stock_exist(self) -> bool:
+    def stock_exists(self) -> bool:
         """Check whether the stock exists in the database."""
         try:
             with connect_db() as conn:
@@ -88,7 +85,7 @@ class StockDataFetcher:
             return self.ticker
 
     def fetch_historical_data(self, days: int = 365) -> pd.DataFrame:
-        """Query daily historical data from SQLite and apply dividend/split adjustment."""
+        """Load daily prices from SQLite, adjusted for dividends and splits."""
         try:
             cutoff_date = (datetime.now() - timedelta(days)).strftime('%Y-%m-%d')
 
@@ -104,9 +101,8 @@ class StockDataFetcher:
             if self.historical_data.empty:
                 logger.info(f"No historical data for '{self.ticker}' in the database...")
             else:
-                # Back out Open/High/Low from the AdjClose/Close ratio to remove chart gaps caused by dividends and splits.
-                # A row with a missing or non-positive close has no usable ratio, so it keeps its raw
-                # values throughout: adjusting only the close would put it outside its own High/Low.
+                # Scale OHLC by AdjClose/Close. Rows without a usable ratio keep all raw values,
+                # since adjusting only the close would put it outside its own High/Low.
                 close = self.historical_data['Close']
                 adj_close = self.historical_data['AdjClose']
                 usable = (close > 0) & adj_close.notna()
@@ -116,7 +112,6 @@ class StockDataFetcher:
                 self.historical_data['Low'] = self.historical_data['Low'] * adj_ratio
                 self.historical_data['Close'] = adj_close.where(usable, close)
 
-                # Incomplete rows would silently poison indicators and charts downstream
                 self.historical_data = self.historical_data.dropna(subset=['Open', 'High', 'Low', 'Close'])
 
                 logger.info(f"Loaded {len(self.historical_data)} historical rows for '{self.ticker}' from the database!")
@@ -137,11 +132,9 @@ class StockDataFetcher:
                 logger.warning(f"Failed to download data for '{self.ticker}'...")
                 return data
 
-            # Drop non-OHLCV columns such as Dividends / Stock Splits
             core_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
             data = data[core_cols]
 
-            # Remove rows containing NaN
             self.intraday_data = data.dropna(subset=['Open', 'High', 'Low', 'Close'])
 
             if not self.intraday_data.empty:
@@ -153,8 +146,8 @@ class StockDataFetcher:
             logger.error(f"Error while downloading data for '{self.ticker}': {e}")
             return pd.DataFrame()
 
-    def fetch_latest_time(self) -> pd.Timestamp:
-        """Return the latest data timestamp (Asia/Taipei). Priority: intraday > historical > system time."""
+    def latest_time(self) -> pd.Timestamp:
+        """Latest data timestamp in Asia/Taipei: intraday, else historical, else now."""
         if self.intraday_data is not None and not self.intraday_data.empty:
             latest_time = self.intraday_data.index[-1]
         elif self.historical_data is not None and not self.historical_data.empty:
@@ -167,8 +160,8 @@ class StockDataFetcher:
 
         return latest_time.astimezone(pytz.timezone('Asia/Taipei'))
 
-    def get_data_count(self) -> dict:
-        """Return the record count and date range for this stock in the database."""
+    def get_data_range(self) -> dict:
+        """Record count and date range for this stock in the database."""
         try:
             with connect_db() as conn:
                 cursor = conn.cursor()
@@ -192,13 +185,13 @@ class StockDataFetcher:
     def _debug_info(self) -> dict:
         hist_data = self.fetch_historical_data()
         intra_data = self.fetch_intraday_data()
-        data_count = self.get_data_count()
+        data_count = self.get_data_range()
         print("-" * 50)
 
         return {
             "Ticker": self.ticker,
             "Name": self.fetch_stock_name(),
-            "In database": self.check_stock_exist(),
+            "In database": self.stock_exists(),
             "DB total records": data_count["total_records"],
             "DB date range": f"{data_count['earliest_date']} ~ {data_count['latest_date']}",
             "Historical rows": len(hist_data),

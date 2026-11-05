@@ -21,11 +21,10 @@ def display_name(name: str, ticker: str) -> str:
 
 def build_snapshot(ticker: str, name: str, history_data: pd.DataFrame,
                    intraday_data: pd.DataFrame, latest_time: datetime) -> StockSnapshot:
-    """Assemble everything the `/stock` Embed shows from the frames the fetcher returned.
+    """Assemble what the `/stock` Embed shows.
 
-    The one indicator needed here is computed locally rather than through
-    `compute_indicators`, which writes in place: both frames go on to the chart layer
-    afterwards, and what gets overlaid on a chart is that layer's own decision.
+    RSI is computed locally rather than via `compute_indicators`, which would write
+    into frames the chart layer still uses.
     """
     if len(history_data) < 2:
         raise InsufficientDataError(f"'{ticker}' has fewer than two historical rows and cannot be processed...")
@@ -33,7 +32,7 @@ def build_snapshot(ticker: str, name: str, history_data: pd.DataFrame,
     prices = history_data['Close']
     rsi = pta.rsi(prices, length=14)  # pyright: ignore[reportPrivateImportUsage, reportCallIssue]
 
-    # Intraday wins when the market has traded today; otherwise the last close stands in
+    # Intraday if it traded today, else the last close
     if not intraday_data.empty:
         curr_price = intraday_data['Close'].iloc[-1]
         curr_date = pd.to_datetime(intraday_data.index[-1]).date()
@@ -41,13 +40,12 @@ def build_snapshot(ticker: str, name: str, history_data: pd.DataFrame,
         curr_price = prices.iloc[-1]
         curr_date = pd.to_datetime(history_data.index[-1]).date()
 
-    # The most recent close strictly before today, which both the Embed's change %
-    # and the intraday chart's colouring measure against
+    # The latest close strictly before today: the baseline for the change %
     past_data = history_data[pd.to_datetime(history_data.index).date < curr_date]
     prev_price = float(past_data['Close'].iloc[-1] if not past_data.empty else prices.iloc[-2])
 
     def last(series: pd.Series | None) -> float | None:
-        """Latest value of a series, None when there is nothing usable to show."""
+        """Latest value of a series, or None."""
         if series is None or series.empty:
             return None
         val = series.iloc[-1]
@@ -63,13 +61,13 @@ def build_snapshot(ticker: str, name: str, history_data: pd.DataFrame,
     )
 
 
-class DiscordStockChart(View):
-    """Discord UI component holding chart state; lets the user switch between the daily and intraday charts."""
+class ChartToggleView(View):
+    """Button view toggling between the daily and intraday charts."""
     def __init__(self, stock_ticker: str, history_bytes: bytes, intraday_bytes: bytes | None):
         super().__init__(timeout=300.0)
         self.stock_ticker = stock_ticker
-        self.message = None       # Keep a Message reference for cleanup in on_timeout
-        self.is_history = True    # Which chart is currently displayed
+        self.message = None       # Set by the sender, for cleanup in on_timeout
+        self.is_history = True
         self.history_bytes = history_bytes
         self.intraday_bytes = intraday_bytes
 
@@ -80,7 +78,7 @@ class DiscordStockChart(View):
                     item.label = "Intraday unavailable"
 
     async def on_timeout(self):
-        """On timeout, replace the message with an expiry notice and clear the image bytes."""
+        """Replace the message with an expiry notice and free the images."""
         if self.message:
             try:
                 expired_embed = discord.Embed(
@@ -98,7 +96,7 @@ class DiscordStockChart(View):
 
     @discord.ui.button(label="View intraday", style=discord.ButtonStyle.primary, custom_id="btn_toggle")
     async def btn_toggle(self, interaction: discord.Interaction, button: Button):
-        """Toggle between the daily historical chart and the intraday chart, then update the message."""
+        """Swap the displayed chart."""
         await interaction.response.defer()
 
         if self.is_history:
@@ -124,7 +122,7 @@ class DiscordStockChart(View):
 
 
 async def send_stock_response(interaction: discord.Interaction, snapshot: StockSnapshot, history_bytes: bytes, intraday_bytes: bytes | None) -> None:
-    """Build the Discord Embed and send the stock analysis result to the channel."""
+    """Send the `/stock` Embed."""
     color = 0xe74c3c if snapshot.change_percent > 0 else (0x2ecc71 if snapshot.change_percent < 0 else 0x676767)
 
     embed = discord.Embed(title=f"📈 {display_name(snapshot.name, snapshot.ticker)}", color=color)
@@ -135,13 +133,13 @@ async def send_stock_response(interaction: discord.Interaction, snapshot: StockS
     embed.set_image(url="attachment://chart.png")
 
     file = discord.File(io.BytesIO(history_bytes), filename="chart.png")
-    view = DiscordStockChart(snapshot.ticker, history_bytes, intraday_bytes)
+    view = ChartToggleView(snapshot.ticker, history_bytes, intraday_bytes)
     msg = await interaction.followup.send(embed=embed, file=file, view=view)
-    view.message = msg  # Keep a Message reference for cleanup in on_timeout
+    view.message = msg
 
 
 async def send_backtest_response(interaction: discord.Interaction, result: BacktestResult, stock_name: str, strategy_label: str, chart_bytes: bytes) -> None:
-    """Build the Discord Embed and send the backtest result to the channel."""
+    """Send the `/backtest` Embed."""
     color = 0xe74c3c if result.total_return > 0 else (0x2ecc71 if result.total_return < 0 else 0x676767)
 
     embed = discord.Embed(title=f"📊 {display_name(stock_name, result.ticker)} backtest ({strategy_label})", color=color)

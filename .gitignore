@@ -16,6 +16,7 @@ wheels/
 
 # others
 .env
+ecosystem.config.js
 CLAUDE.md
 
 # output

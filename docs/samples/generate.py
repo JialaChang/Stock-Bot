@@ -1,7 +1,4 @@
-"""
-Regenerate the sample reports linked from the README.
-Writes to a throwaway database, so the developer's own stock_data.db is left untouched.
-"""
+"""Regenerate the README's sample reports, using a throwaway database."""
 import os
 import shutil
 import tempfile
@@ -21,7 +18,7 @@ PRICE_ROWS = 100
 
 
 def seed(db_path: str) -> None:
-    """Download `TICKER` into a throwaway database via the production write path."""
+    """Download `TICKER` into `db_path` via the production write path."""
     database_module.DB_PATH = db_path
     init_database()
     with connect_db() as conn:
@@ -55,7 +52,7 @@ def prices_sample() -> None:
 if __name__ == '__main__':
     print('Regenerating sample reports...')
     with tempfile.TemporaryDirectory() as tmp:
-        html_report._EXPORT_DIR = os.path.join(tmp, 'exports')  # keep exports/ clean
+        html_report._EXPORT_DIR = os.path.join(tmp, 'exports')  # Keep exports/ clean
         seed(os.path.join(tmp, 'sample.db'))
         backtest_sample()
         prices_sample()

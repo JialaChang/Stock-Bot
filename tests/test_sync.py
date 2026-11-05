@@ -92,8 +92,7 @@ class TestNeedsFullRefresh:
         assert needs_full_refresh(seeded_db, 'C', extending) is False
 
     def test_a_gap_between_history_and_the_window_triggers_a_refresh(self, seeded_db):
-        # No overlap means the drift check has nothing to compare, and the days in
-        # between would never be fetched by a later short update.
+        # No overlap: the drift check has nothing to compare
         store_prices(seeded_db, 'C', [9.0, 9.1, 9.2])
 
         assert needs_full_refresh(seeded_db, 'C', frame([5.0], dates=['2026-03-02'])) is True
@@ -145,8 +144,7 @@ class TestBackfillStamps:
         assert fetch_pending_tickers(seeded_db, 365) == []
 
     def test_row_count_does_not_decide_completion(self, seeded_db):
-        # A newly listed ticker holds few rows yet is finished once stamped;
-        # the old row-count filter re-downloaded these forever.
+        # A newly listed ticker has few rows but is done once stamped
         store_prices(seeded_db, 'B.TW', [1.0, 1.1, 1.2])
         mark_backfilled(seeded_db, ['A.TW', 'B.TW', 'C'])
         seeded_db.commit()

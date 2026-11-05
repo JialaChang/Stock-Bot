@@ -1,9 +1,4 @@
-"""Composite decisions in isolation.
-
-`StubRule` returns scripted biases, so a case states exactly what each rule said on each
-bar and no indicator is involved. What is under test is the mapping from opinions to an
-action, plus the aggregation of the declarations the engine reads.
-"""
+"""Composite decisions in isolation, driven by scripted rule biases."""
 import math
 from datetime import date
 
@@ -18,11 +13,9 @@ from tests.conftest import make_ohlcv
 
 
 class StubRule(Rule):
-    """A rule answering from a script, one entry per call, holding the last one after.
+    """Answers from a script, one entry per call, then holds the last.
 
-    The cursor into the script deliberately survives `reset()`, unlike the call counter:
-    a test that resets part-way needs the next bar to carry the next scripted reading,
-    or the strategy would be handed the opening bar again and the reset prove nothing.
+    The script cursor survives `reset()` on purpose; only the call counter is cleared.
     """
 
     def __init__(self, *biases: float, name: str = "stub", columns=None,
@@ -84,8 +77,7 @@ class TestEntryNeedsGateAndTrigger:
         assert act(strategy) == "HOLD"
 
     def test_a_trigger_below_the_threshold_is_not_enough(self):
-        # Stated against an explicit threshold rather than the shipped default: what is
-        # under test is that the bucket's mean has to reach the bar, not where the bar sits.
+        # Explicit threshold: the test is that the mean must reach it, not where it sits
         strategy = CompositeStrategy(
             trend=[StubRule(1.0)],
             entry=[StubRule(1.0), StubRule(0.0), StubRule(0.0)],
@@ -95,8 +87,7 @@ class TestEntryNeedsGateAndTrigger:
         assert act(strategy) == "HOLD"
 
     def test_reaching_the_threshold_exactly_is_enough(self):
-        # Chosen so the mean is exact in binary: a bucket landing a hair under a round
-        # threshold is a floating-point accident, not a decision the composite made.
+        # Values exact in binary, so no floating-point rounding
         strategy = CompositeStrategy(
             trend=[StubRule(1.0)],
             entry=[StubRule(1.0), StubRule(0.5), StubRule(0.0)],
@@ -115,9 +106,7 @@ class TestEntryNeedsGateAndTrigger:
         assert act(strategy) == "HOLD"
 
     def test_the_default_threshold_asks_for_more_than_one_rule(self):
-        # No rule answers above 1.0, so any default above 1/n is what makes the bucket ask
-        # for agreement at all instead of passing whichever rule spoke first. This is the
-        # property worth pinning; the exact level is a tuning decision that may move.
+        # A default above 1/n is what forces agreement; the exact level may be retuned
         strategy = CompositeStrategy(
             trend=[StubRule(1.0)],
             entry=[StubRule(1.0), StubRule(0.0), StubRule(0.0)],
@@ -126,9 +115,7 @@ class TestEntryNeedsGateAndTrigger:
         assert act(strategy) == "HOLD"
 
     def test_the_threshold_decides_how_stale_an_agreeing_event_may_be(self):
-        # Paired with `Decay`, the threshold stops being a count of rules and becomes a
-        # window: beside one full opinion, a faded event still carries the bucket while it
-        # is worth `n * threshold - 1`, and stops the bar after it drops below.
+        # With `Decay`, a faded event carries the bucket while worth `n * threshold - 1`
         strategy = CompositeStrategy(
             trend=[StubRule(1.0)],
             entry=[StubRule(1.0), Decay(StubRule(1.0, 0.0), half_life=3), StubRule(0.0)],
@@ -159,8 +146,7 @@ class TestEntryNeedsGateAndTrigger:
 
 class TestNoTrendRules:
     def test_an_unconfigured_gate_permits_both_sides(self):
-        # None from an empty bucket means "nothing to say", not "not now" — otherwise a
-        # pure vote could never open a position at all.
+        # No trend rules means no gate, not a closed one
         assert act(CompositeStrategy(entry=[StubRule(1.0)])) == "ENTER_LONG"
         assert act(CompositeStrategy(entry=[StubRule(-1.0)])) == "ENTER_SHORT"
 
@@ -205,8 +191,7 @@ class TestExit:
         assert act(strategy, holding("LONG")) == "EXIT_LONG"
 
     def test_an_exit_is_never_turned_into_a_reversal(self):
-        # Leaving and opening the other side are decided by different buckets against
-        # different thresholds, so the composite only ever emits the exit.
+        # Opening the other side is the entry bucket's call, so only the exit is emitted
         strategy = CompositeStrategy(trend=[StubRule(-1.0)], entry=[StubRule(-1.0)],
                                      exit=[StubRule(-1.0)])
 
@@ -241,8 +226,7 @@ class TestGateHysteresis:
         assert self.replay(strategy, 2) == ["ENTER_LONG", "ENTER_LONG"]
 
         strategy.reset()
-        # The same in-band 0.3 reading, now with no gate left to hold it open: an
-        # undecided gate blocks both sides, so the trigger below it decides nothing.
+        # The same in-band 0.3 with the gate never opened: both sides stay blocked
         assert strategy.signal(bars(1), None).action == "HOLD"
 
 
@@ -301,8 +285,7 @@ class TestEveryRuleSeesEveryBar:
 
 class TestSignalPayload:
     def test_the_rules_that_voted_for_an_entry_are_named(self):
-        # Two for and one against averages to 0.33, so the threshold is lowered to let
-        # the decision through with a dissenter still in the bucket to be left out of.
+        # Two for, one against: a lowered threshold lets it through with a dissenter
         strategy = CompositeStrategy(entry=[StubRule(1.0, name="agrees"),
                                             StubRule(1.0, name="also agrees"),
                                             StubRule(-1.0, name="dissents")],
@@ -374,12 +357,7 @@ class TestPresets:
 
 
 class TestGatedPresetComposition:
-    """Which rules the preset fades, read off the biases it reports rather than its buckets.
-
-    An event rule that is wrapped answers with fractions on the bars after it fires; a state
-    rule that is left bare only ever answers at full strength. That difference is visible in
-    `Signal.values`, so the composition can be pinned without reaching into the strategy.
-    """
+    """Which rules the preset fades, read from `Signal.values`: only faded rules report fractions."""
 
     def biases(self, name: str) -> list[float]:
         closes = [100 + 35 * math.sin(i / 7) + 0.1 * i for i in range(300)]

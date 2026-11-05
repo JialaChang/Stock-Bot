@@ -17,15 +17,13 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
-# Specifying a test guild speeds up command sync;
-# without it commands go through a global sync (takes about 1 hour to take effect).
+# A test guild syncs commands instantly; a global sync takes about an hour
 GUILD_ID = os.getenv('GUILD')
 if GUILD_ID and not GUILD_ID.strip().isdecimal():
     logger.warning(f"GUILD is not a valid guild id ({GUILD_ID!r})...")
     GUILD_ID = None
 GUILD = discord.Object(id=int(GUILD_ID)) if GUILD_ID else None
 
-# Validate environment variables
 if not TOKEN:
     raise ValueError("DISCORD_TOKEN not found in environment variables")
 if not GUILD:
@@ -36,14 +34,12 @@ class StockBot(commands.Bot):
         if GUILD:
             self.tree.copy_global_to(guild=GUILD)
             await self.tree.sync(guild=GUILD)
-            # Commands registered globally by an earlier run stay registered and
-            # show up alongside the guild copies. Push an empty global list to drop them.
+            # Drop global commands left by earlier runs, which would show up twice
             self.tree.clear_commands(guild=None)
             await self.tree.sync()
         else:
             await self.tree.sync()
 
-# Intents decide which gateway events the bot subscribes to; undeclared events are not pushed.
 intents = discord.Intents.default()
 bot = StockBot(command_prefix='$', intents=intents)
 
@@ -64,18 +60,15 @@ async def on_resumed():
 
 
 @bot.tree.command(name="stock", description="Enter a ticker to query info and charts (TW/US stocks and some indices only)")
-async def exhibit_stock(interaction: discord.Interaction, ticker: str):
-    # defer() prevents Discord from timing out the interaction if processing takes over 3 seconds
-    await interaction.response.defer()
+async def stock_command(interaction: discord.Interaction, ticker: str):
+    await interaction.response.defer()  # Discord times out after 3 seconds
 
     try:
-        # asyncio.to_thread offloads the blocking SQLite/yfinance calls to a thread pool so the event loop is not blocked.
-        # The constructor itself hits SQLite to normalize the ticker, so it is offloaded too.
+        # Blocking calls go to a thread; the constructor hits SQLite too
         fetcher = await asyncio.to_thread(StockDataFetcher, ticker)
         stock_name = await asyncio.to_thread(fetcher.fetch_stock_name)
         stock_ticker = fetcher.ticker
 
-        # Run requests concurrently to improve responsiveness
         history_data, intraday_data = await asyncio.gather(
             asyncio.to_thread(fetcher.fetch_historical_data),
             asyncio.to_thread(fetcher.fetch_intraday_data)
@@ -85,11 +78,10 @@ async def exhibit_stock(interaction: discord.Interaction, ticker: str):
             await interaction.followup.send(f"Could not retrieve data for `{stock_ticker}`...\n> Please check that the ticker is correct, or the stock may not be in the database yet")
             logger.warning(f"Failed to retrieve data for '{stock_ticker}'...")
             return
-        # Intraday is optional
         if intraday_data.empty:
             logger.info(f"No intraday data for '{stock_ticker}', showing the daily chart only.")
 
-        latest_time = await asyncio.to_thread(fetcher.fetch_latest_time)
+        latest_time = fetcher.latest_time()
 
         snapshot = await asyncio.to_thread(
             build_snapshot, stock_ticker, stock_name, history_data, intraday_data, latest_time
@@ -119,7 +111,6 @@ async def exhibit_stock(interaction: discord.Interaction, ticker: str):
 
 STRATEGIES = {"RSI": RSIStrategy, "EMA": EMAStrategy,
               "Gated": gated_strategy, "Vote": voting_strategy}
-# A subset of the canonical periods in src.quant
 BOT_PERIODS = ["1mo", "3mo", "6mo", "1y", "2y", "3y", "5y", "10y"]
 
 @bot.tree.command(name="backtest", description="Enter a ticker to run a strategy backtest and show a chart (TW/US stocks and some indices only)")
@@ -137,7 +128,6 @@ async def backtest_stock(interaction: discord.Interaction, ticker: str, strategy
 
         engine = BacktestEngine(STRATEGIES[strategy.value]())
 
-        # Fetch extra history so the indicator warm-up is not taken out of the period the user asked for, then backtest only from `start` onwards.
         period_days = PERIOD_DAYS[period.value]
         start = datetime.now() - timedelta(days=period_days)
         data = await asyncio.to_thread(

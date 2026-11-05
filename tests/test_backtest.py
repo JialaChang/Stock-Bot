@@ -8,12 +8,7 @@ from tests.conftest import make_ohlcv
 
 
 class ScriptedStrategy(Strategy):
-    """Emits a predetermined action per bar, so tests drive the engine directly.
-
-    Declares `Close` so the engine's dropna has a real column to work on without
-    any indicator being computed. The bar counter lives in `reset()` so replaying
-    the same instance restarts the script rather than resuming part-way through it.
-    """
+    """Emits a scripted action per bar. `reset()` restarts the script."""
     required_columns = ["Close"]
     warmup = 0
 
@@ -150,8 +145,7 @@ class TestEquityCurve:
             INITIAL_CAPITAL + sum(t.profit_and_loss for t in result.trades))
 
     def test_a_gapped_short_loses_more_than_the_account(self):
-        # The collateral is the whole account, so the stop at +15% would cap the loss --
-        # but a quadrupling overnight means it fills at the open, far past the collateral.
+        # A quadrupling overnight gaps past the stop and the whole collateral
         data = make_ohlcv([100, 100, 400, 100], opens=[100, 100, 400, 100],
                           highs=[101, 101, 410, 101], lows=[99, 99, 390, 99])
         result = BacktestEngine(ScriptedStrategy(["ENTER_SHORT", "HOLD", "ENTER_LONG"])).run("X", data)
@@ -208,8 +202,7 @@ class TestReversal:
         assert result.trades[0].exit_signal.conditions == {"End of backtest": True}
 
     def test_a_crossover_strategy_alternates_sides_without_going_flat(self):
-        # Falling, rising, falling. The opening leg leaves EMA_5 under EMA_20 by the time the
-        # warm-up ends, so both a golden and a death cross land inside the backtest itself.
+        # Falling, rising, falling: both a golden and a death cross land after the warm-up
         closes = ([100 - 0.4 * i for i in range(25)]
                   + [90 + 1.0 * i for i in range(25)]
                   + [115 - 0.8 * i for i in range(25)])
@@ -222,7 +215,7 @@ class TestReversal:
 
 
 class TestHistoryWindow:
-    """The slicing rule itself, which the strategy tests also build their inputs from."""
+    """The slicing rule the strategy tests also build their inputs from."""
 
     def test_the_window_ends_at_the_requested_bar(self):
         data = make_ohlcv([100] * 10)
@@ -230,7 +223,7 @@ class TestHistoryWindow:
         assert list(history_window(data, 4, 3).index) == list(data.index[2:5])
 
     def test_an_early_bar_gets_a_short_window_rather_than_a_wrapped_one(self):
-        # An unclamped start would go negative, count from the end, and return nothing.
+        # An unclamped negative start would count from the end
         data = make_ohlcv([100] * 10)
 
         assert list(history_window(data, 0, 3).index) == [data.index[0]]
@@ -248,8 +241,7 @@ class TestHistoryWindow:
 
 class TestStrategyHistory:
     def test_the_strategy_sees_lookback_rows_ending_at_today(self):
-        # The last row being today's is the one guarantee that makes lookahead bias
-        # structurally impossible, whatever a strategy does with the rows it is handed.
+        # The last row is today, which is what rules out lookahead
         data = make_ohlcv([100] * 10)
         strategy = RecordingStrategy(lookback=3)
         BacktestEngine(strategy).run("X", data)
@@ -258,7 +250,7 @@ class TestStrategyHistory:
         assert [h.index[-1] for h in strategy.seen] == list(data.index)
 
     def test_the_windows_first_bar_looks_back_before_start(self):
-        # Rows before `start` are kept precisely so the opening bar is not short-changed.
+        # Rows before `start` stay reachable from the opening bar
         data = make_ohlcv([100] * 10)
         strategy = RecordingStrategy(lookback=3)
         result = BacktestEngine(strategy).run("X", data, start=data.index[6])
@@ -287,7 +279,7 @@ class TestStrategyHistory:
 
 class TestStrategyLifecycle:
     def test_replaying_an_engine_repeats_the_same_backtest(self):
-        # `reset()` is what keeps per-run strategy state from leaking into the next run.
+        # `reset()` keeps strategy state from leaking into the next run
         data = make_ohlcv([100, 100, 110, 110], opens=[100, 100, 110, 110])
         engine = BacktestEngine(ScriptedStrategy(["ENTER_LONG", "EXIT_LONG"]))
 

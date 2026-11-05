@@ -1,3 +1,4 @@
+"""Backfill 10 years of prices for the seeded stocks. Run after seed_stocks; safe to rerun."""
 import time
 import logging
 
@@ -16,15 +17,10 @@ MIN_BATCH_INTERVAL = 10  # Seconds between the starts of two consecutive downloa
 
 
 def backfill_history(period: int, tickers: list[str] | None = None, force: bool = False):
-    """Historical backfill: fetch long-period history when the DB is first built or new tickers are added.
+    """Fetch `period` years of history for tickers not backfilled recently.
 
-    Tickers are skipped by `stocks.last_backfilled`, not by how many rows they have:
-    a row count cannot tell a fully backfilled ticker from a recently listed one, so
-    it both marks partial histories as done and re-downloads young tickers forever.
-
-    `tickers` re-fetches exactly those, bypassing the skip filter. The daily updater
-    uses it to restate a history after a dividend or split. `force` re-fetches
-    everything regardless of when it was last backfilled.
+    Skipping goes by `stocks.last_backfilled`, since a row count cannot tell a finished
+    ticker from a newly listed one. `tickers` re-fetches exactly those; `force` re-fetches all.
     """
     logger.info(f"Starting historical backfill for the past {period} years...")
 
@@ -50,7 +46,6 @@ def backfill_history(period: int, tickers: list[str] | None = None, force: bool 
                             logger.warning(f"'{ticker}' download failed or has no valid historical data...")
                             continue
 
-                        # Use executemany for an efficient bulk parameterized write
                         upsert_records(conn, records_from_frame(ticker, frame))
                         written.append(ticker)
                         total_success += 1
@@ -59,12 +54,10 @@ def backfill_history(period: int, tickers: list[str] | None = None, force: bool 
                         logger.error(f"Failed to process '{ticker}': {e}")
                         continue
 
-                # Stamp and write in the same transaction, so a ticker is never
-                # recorded as backfilled without its prices landing too.
+                # Same transaction as the prices, so a stamp never lands without them
                 mark_backfilled(conn, written)
                 conn.commit()
                 logger.info(f"Batch write complete, wrote historical data for {len(written)}/{len(chunk_tickers)} stocks!")
-                # Long-period payloads are large, so use a longer sleep to avoid the YF server refusing connections
                 if i + CHUNK_SIZE < total_stocks:
                     time.sleep(max(0, MIN_BATCH_INTERVAL - (time.monotonic() - batch_started)))
 

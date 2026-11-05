@@ -1,9 +1,6 @@
-"""Rule opinions in isolation.
+"""Rule opinions in isolation, on hand-built indicator frames.
 
-`bias()` is called directly with hand-built indicator frames, so a case is one exact set
-of values rather than a price series reverse-engineered to produce them. Rules that carry
-state are replayed bar by bar through the engine's own `history_window`, which keeps these
-tests from exercising a wider view than a rule is ever handed.
+Stateful rules are replayed through the engine's own `history_window`.
 """
 import pandas as pd
 import pytest
@@ -30,11 +27,7 @@ def computed():
 
 
 def replay(rule, history):
-    """Feed the bars to a rule one at a time and return the bias from each.
-
-    Needed wherever a case only exists as a sequence: a rule that carries state cannot be
-    judged from a single call.
-    """
+    """Feed the bars to a rule one at a time and return the bias from each."""
     return [rule.bias(history_window(history, i, rule.lookback)) for i in range(len(history))]
 
 
@@ -69,8 +62,7 @@ class TestSMATrend:
         assert SMATrend().bias(frame(Close=[97.0], SMA_60=[100.0])) == pytest.approx(-0.6)
 
     def test_a_reading_beyond_the_band_is_clipped(self):
-        # The -1..+1 contract is what lets the composite average rules together; a rule
-        # able to answer +2 would outvote two opposing rules on its own.
+        # Biases stay within -1..+1 so the composite can average them
         assert SMATrend().bias(frame(Close=[200.0], SMA_60=[100.0])) == 1.0
         assert SMATrend().bias(frame(Close=[10.0], SMA_60=[100.0])) == -1.0
 
@@ -83,8 +75,7 @@ class TestSMATrend:
         assert rule.bias(frame(Close=[105.0], SMA_20=[100.0])) == pytest.approx(1.0)
 
     def test_an_unusable_average_has_no_opinion(self):
-        # Rows with a missing or non-positive close keep their raw values, so an average
-        # of zero is reachable; it is a divide by zero rather than a trend reading.
+        # A zero average is reachable from unadjusted rows
         assert SMATrend().bias(frame(Close=[100.0], SMA_60=[0.0])) == 0.0
 
 
@@ -132,8 +123,7 @@ class TestMACDSignalCross:
         assert MACDSignalCross().bias(macd_frame((5.0, 5.4), (5.6, 5.4))) == 1.0
 
     def test_a_sub_cent_separation_is_a_real_cross_here(self):
-        # Unlike price lines, both scale with the ticker's price level: on a stock trading
-        # near 8 a gap of 0.003 is ordinary, and rounding it away would lose the crossing.
+        # Both lines scale with price: near 8, a 0.003 gap is a real crossing
         assert MACDSignalCross().bias(macd_frame((0.010, 0.013), (0.016, 0.013))) == 1.0
         # The same pair of values under the price-tick default rounds to equal and is lost.
         assert EMACross().bias(ema_frame((0.010, 0.013), (0.016, 0.013))) == 0.0
@@ -214,11 +204,7 @@ class TestStochCross:
 
 
 class TestDeclaredColumnsAndWarmup:
-    """Every rule must be able to run on what `compute_indicators` produces.
-
-    A rule declaring a column nobody computes fails only at backtest time, and one
-    declaring too little warm-up reads values that have not converged.
-    """
+    """Every rule's declared columns and warm-up match what `compute_indicators` produces."""
 
     RULES = [SMATrend(), MACDZeroLine(), RSIReversal(), StochCross(),
              EMACross(), BollingerBand(), MACDSignalCross()]
@@ -229,8 +215,7 @@ class TestDeclaredColumnsAndWarmup:
 
     @pytest.mark.parametrize("rule", RULES, ids=lambda r: r.name)
     def test_the_declared_warmup_is_never_optimistic(self, rule, computed):
-        # Declaring more warm-up than needed only costs history; declaring less means the
-        # engine's dropna leaves rows the rule cannot actually read.
+        # Too little warm-up leaves rows the rule cannot read
         for column in rule.required_columns:
             first_valid = computed.index.get_loc(computed[column].first_valid_index()) + 1
             assert rule.warmup >= first_valid, f"{rule.name} under-declares warmup for {column}"
@@ -242,11 +227,7 @@ class TestDeclaredColumnsAndWarmup:
 
 
 class Scripted(Rule):
-    """A rule answering from a script, one entry per call, silent once it runs out.
-
-    `reset()` clears the cursor as well as the call count, so a test can assert that a
-    wrapper's reset reached the rule it wraps rather than only its own held value.
-    """
+    """Answers from a script, one entry per call, then 0. `reset()` restarts the script."""
 
     name = "scripted"
 
@@ -293,8 +274,7 @@ class TestDecay:
         assert held[2] < 1.0 and held[3] == 1.0
 
     def test_a_spent_opinion_reaches_exact_silence(self):
-        # Not merely small: `_agreed` names any rule leaning the way a decision went, so a
-        # whisper that never reaches zero would be reported as a reason for the trade.
+        # Exactly zero, or `_agreed` would still report it as a reason
         held = fade(Decay(Scripted(1.0), half_life=1, floor=0.05), 6)
         assert held[-1] == 0.0
         assert 0.0 in held
@@ -304,8 +284,7 @@ class TestDecay:
         assert held[2] == 0.0  # 0.25 is under a floor of 0.3
 
     def test_the_inner_rule_is_consulted_on_every_bar(self):
-        # A wrapped CrossRule carries a tracker; skipping a call while an opinion is still
-        # live would march it past a crossing and report the wrong direction later.
+        # The wrapped rule is called every bar, or its cross tracker would miss crossings
         inner = Scripted(1.0)
         decay = Decay(inner, half_life=5)
         fade(decay, 4)
@@ -332,8 +311,7 @@ class TestDecay:
             Decay(Scripted(1.0), half_life=0)
 
     def test_wrapping_a_cross_rule_keeps_its_crossings(self, computed):
-        # The crossings a bare rule finds must still be there once wrapped, on the same
-        # bars and in the same direction; decay only fills the silence between them.
+        # Wrapping keeps every crossing on the same bar and in the same direction
         bare = replay(EMACross(5, 20), computed)
         wrapped = replay(Decay(EMACross(5, 20), half_life=3), computed)
         for i, value in enumerate(bare):

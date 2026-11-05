@@ -8,32 +8,26 @@ from src.quant.rule import (BollingerBand, Decay, EMACross, MACDSignalCross, MAC
 
 
 class Strategy(ABC):
-    required_columns: list[str] = []  # Indicator columns this strategy needs; engine computes only these
-    warmup: int = 0  # Rows consumed before the first valid indicator value; engine fetches this many extra
-    lookback: int | None = 1  # Rows of history handed to signal(), today included; None means everything so far
+    required_columns: list[str] = []  # The engine computes only these
+    warmup: int = 0  # Rows consumed before the first valid indicator value
+    lookback: int | None = 1  # Rows handed to signal(), today included; None means everything
 
     def __init__(self) -> None:
         self.reset()
 
     def reset(self) -> None:
-        """Clear per-run state. The engine calls this once before each backtest."""
+        """Clear per-run state. The engine calls this before each backtest."""
 
     @abstractmethod
     def signal(self, history: DataFrame, position: Position | None) -> Signal:
-        """Decide what to do at today's close.
-
-        `history` ends at today (`history.iloc[-1]`) and never contains future rows,
-        so a strategy cannot look ahead by construction. It holds up to `lookback`
-        rows and is drawn from the full computed frame, meaning the warm-up rows
-        before the backtest window are available to the first day of the window.
-        """
+        """Decide what to do at today's close. `history.iloc[-1]` is today."""
         ...
 
 
 class RSIStrategy(Strategy):
     required_columns = ["RSI"]
     warmup = 14
-    lookback = 1  # Threshold levels are read off today alone
+    lookback = 1
 
     def signal(self, history: DataFrame, position: Position | None) -> Signal:
         rsi = round(float(history['RSI'].iloc[-1]), 2)
@@ -53,15 +47,10 @@ class RSIStrategy(Strategy):
 
 
 class EMAStrategy(Strategy):
-    """EMA crossover: go long when the fast line crosses above the slow one, short below.
-
-    Detecting the crossing is `EMACross`'s job; a cross names the side to be on,
-    and so closes an opposite position in the same fill rather than merely opening a new one.
-    """
+    """EMA crossover, always in the market: a cross reverses any opposite position."""
 
     def __init__(self, fast: int = 5, slow: int = 20) -> None:
         self._cross = EMACross(fast, slow)
-        # Declared by the rule rather than repeated here, so the two cannot drift apart
         self.required_columns = self._cross.required_columns
         self.warmup = self._cross.warmup
         self.lookback = self._cross.lookback
@@ -92,20 +81,14 @@ class EMAStrategy(Strategy):
 RuleSpec = Rule | tuple[Rule, float]  # A rule, or one carrying a weight other than 1.0
 
 class CompositeStrategy(Strategy):
-    """Several rules combined by the role each is given rather than by a single vote.
+    """Rules combined by role:
 
-    A rule only says which side it favours; what that opinion *means* is decided here,
-    by the bucket it was placed in:
+    - `trend` is a gate: it picks the side that may be opened and vetoes the other.
+    - `entry` is a trigger: it says when to open, within what the gate allows.
+    - `exit` is read against the position: a score favouring the other side means leave.
 
-    - `trend` is a gate. Its score picks the one side that may be opened at all, and
-      vetoes the other however strong the trigger.
-    - `entry` is a trigger. It says when to act, once the gate has said what is allowed.
-    - `exit` is read against the open position: a score favouring the other side is a
-      reason to leave.
-
-    Rules sharing a bucket should answer in the same shape — all graded or all events —
-    because the average is what mixes them. A rule answering ±1 on every bar decides a
-    bucket by itself next to one that speaks rarely, whatever weight either was given.
+    Rules in one bucket should all be graded or all be events, or the one answering
+    every bar dominates the average.
     """
 
     def __init__(self, *,
@@ -129,8 +112,6 @@ class CompositeStrategy(Strategy):
         self.entry_threshold = entry_threshold
         self.exit_threshold = exit_threshold
 
-        # Declared by the rules rather than restated here. The union is what the engine
-        # computes and drops NaNs on, so the deepest warm-up among them governs.
         self.required_columns = sorted({c for r in self._rules for c in r.required_columns})
         self.warmup = max((r.warmup for r in self._rules), default=0)
         lookbacks = [r.lookback for r in self._rules]
@@ -139,11 +120,9 @@ class CompositeStrategy(Strategy):
         super().__init__()  # Last: it calls reset(), which needs the rules to exist
 
     def _bucket(self, specs: Sequence[RuleSpec]) -> list[tuple[int, float]]:
-        """Resolve a bucket to (rule index, weight) pairs, registering rules by identity.
+        """Resolve a bucket to (rule index, weight) pairs.
 
-        Indices rather than the rules themselves so that a rule placed in two buckets is
-        still evaluated once per bar: a second `bias()` call would advance a cross tracker
-        past the very crossing it is meant to report.
+        Indices let a rule shared by two buckets be evaluated once per bar.
         """
         bucket = []
         for spec in specs:
@@ -164,9 +143,7 @@ class CompositeStrategy(Strategy):
             rule.reset()
 
     def signal(self, history: DataFrame, position: Position | None) -> Signal:
-        # Every rule is evaluated once, before any decision is taken. A rule carrying state
-        # has to see every bar, so which buckets a decision happens to consult must not
-        # change what any rule is shown.
+        # Evaluate every rule every bar, so stateful rules never miss one
         biases = [rule.bias(self._view(rule, history)) for rule in self._rules]
 
         trend = self._score(self._trend, biases)
@@ -185,9 +162,7 @@ class CompositeStrategy(Strategy):
                 return Signal("ENTER_SHORT", self._agreed(self._entry, biases, -1), values)
             return Signal("HOLD", {}, values)
 
-        # An exit is never turned into a reversal: the reason to leave and open
-        # the other side come from different buckets held to different thresholds,
-        # and the gate can refuse both sides at once.
+        # Exit only, never reverse: opening the other side is the entry bucket's call
         leaving = "EXIT_LONG" if position.side == "LONG" else "EXIT_SHORT"
         against = -1 if position.side == "LONG" else 1
         if exit * against >= self.exit_threshold:
@@ -202,7 +177,7 @@ class CompositeStrategy(Strategy):
 
     @staticmethod
     def _score(bucket: list[tuple[int, float]], biases: list[float]) -> float:
-        """Weighted mean of a bucket's biases, and 0.0 for a bucket with nothing in it."""
+        """Weighted mean of a bucket's biases; 0.0 for an empty bucket."""
         total = sum(weight for _, weight in bucket)
         if total <= 0:
             return 0.0
@@ -210,16 +185,15 @@ class CompositeStrategy(Strategy):
 
     def _agreed(self, bucket: list[tuple[int, float]], biases: list[float],
                 direction: int) -> dict[str, bool]:
-        """The rules in a bucket that voted the way the decision went, named for the report."""
+        """The rules in a bucket that voted the way the decision went."""
         return {self._rules[i].name: True for i, weight in bucket
                 if weight > 0 and biases[i] * direction > 0}
 
     def _update_gate(self, trend: float) -> Side | None:
-        """Which side the trend allows, held through a band around zero.
+        """Which side the trend allows.
 
-        Between `trend_exit` and `trend_enter` the gate keeps whatever it last decided.
-        Without that band it flips on every bar that brushes the threshold, and each flip
-        forces a position closed — enough to bury the result under its own churn.
+        Between `trend_exit` and `trend_enter` the gate keeps its last decision, so it
+        does not flip on every bar near the threshold.
         """
         if trend >= self.trend_enter:
             self._gate = "LONG"
@@ -230,23 +204,14 @@ class CompositeStrategy(Strategy):
         return self._gate
 
     def _allowed(self, gate: Side | None) -> tuple[Side, ...]:
-        """Which sides may be opened right now.
-
-        `gate` is None both when no trend rule was given and when the ones given are
-        undecided, and the two must not behave alike: the first has nothing to say and
-        gates nothing, while the second has said "not now" and blocks both sides.
-        """
+        """Which sides may be opened. No trend rules allows both; an undecided gate allows neither."""
         if not self._trend:
             return ("LONG", "SHORT")
         return (gate,) if gate is not None else ()
 
 
 def gated_strategy() -> CompositeStrategy:
-    """Role-based composition: trade a reversal only in the direction the trend allows.
-
-    The gate is one rule on purpose. A second one would have to answer on the same scale
-    to share the bucket fairly.
-    """
+    """Trade a reversal only in the direction the trend allows."""
     return CompositeStrategy(
         trend=[SMATrend(200)],
         entry=[RSIReversal(), Decay(StochCross()), Decay(EMACross())],
@@ -255,10 +220,6 @@ def gated_strategy() -> CompositeStrategy:
 
 
 def voting_strategy() -> CompositeStrategy:
-    """Every rule on one equally weighted ballot, with no gate — the control to beat.
-
-    Measured rather than used. Graded rules answering on every bar outweigh events firing
-    on a few, and trend rules cancel against mean-reverting ones instead of qualifying them.
-    """
+    """Every rule in one equally weighted vote with no gate, as a baseline to compare against."""
     rules: list[RuleSpec] = [SMATrend(60), MACDZeroLine(), RSIReversal(), StochCross(), EMACross()]
     return CompositeStrategy(entry=rules, exit=rules)

@@ -62,7 +62,7 @@ class TestTrade:
         assert make_trade("SHORT", entry_price, 50).return_on_investment == 0.0
 
     def test_pnl_and_roi_describe_the_same_trade(self):
-        # The two sit side by side in the HTML report; 7 shares sold at 100, bought back at 137.
+        # 7 shares sold at 100, bought back at 137
         trade = make_trade("SHORT", 100, 137, shares=7)
         assert trade.profit_and_loss == pytest.approx(-259.0)
         assert trade.return_on_investment == pytest.approx(-37.0)

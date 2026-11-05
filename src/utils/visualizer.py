@@ -9,8 +9,7 @@ from datetime import date
 from src.models import BacktestResult
 
 
-# Disable GUI interactive mode and force the 'Agg' backend for headless server-side image generation
-matplotlib.use('Agg')
+matplotlib.use('Agg')  # Headless
 
 _MARKET_COLORS = mpf.make_marketcolors(
     up='red',
@@ -21,10 +20,10 @@ _MARKET_COLORS = mpf.make_marketcolors(
 )
 _MPF_STYLE = mpf.make_mpf_style(marketcolors=_MARKET_COLORS, gridstyle='--')
 
-# Beyond this many bars a candle is about a pixel wide, so a long backtest is drawn as a line instead.
+# Beyond this many bars candles are about a pixel wide, so draw a line instead
 _MAX_CANDLES = 600
 
-# Indicators overlay on the daily chart: column -> (color, label).
+# Daily chart overlays: column -> (color, label)
 _HISTORY_CHART_IND = {
     'SMA_5': ("#FFA41C", '5MA'),
     'SMA_10': ("#05B3F3", '10MA'),
@@ -33,10 +32,10 @@ _HISTORY_CHART_IND = {
 
 
 def generate_history_chart(ticker: str, data: pd.DataFrame, days: int = 61) -> io.BytesIO:
-    """Generate a daily candlestick chart with indicators and volume and return an in-memory PNG."""
+    """Daily candlestick chart with moving averages and volume, as an in-memory PNG."""
     from src.quant.indicator import compute_indicators
 
-    # Averaged over the full history, then sliced
+    # Compute over the full history, then slice
     frame = data.copy()
     compute_indicators(ticker, frame, list(_HISTORY_CHART_IND))
     plot_data = frame.iloc[-days:]
@@ -46,7 +45,6 @@ def generate_history_chart(ticker: str, data: pd.DataFrame, days: int = 61) -> i
         for col, (color, label) in _HISTORY_CHART_IND.items()
     ]
 
-    # Use an in-memory stream to avoid writing the image to disk
     buffer = io.BytesIO()
 
     mpf.plot(
@@ -64,20 +62,16 @@ def generate_history_chart(ticker: str, data: pd.DataFrame, days: int = 61) -> i
         panel_ratios=(4, 1),
         savefig=buffer
     )
-    buffer.seek(0)  # Rewind so the caller can read from the start
+    buffer.seek(0)
     plt.close('all')
     return buffer
 
 
 def generate_intraday_chart(ticker: str, data: pd.DataFrame, baseline: float) -> io.BytesIO:
-    """Generate an intraday line chart, colored red-up / green-down relative to `baseline`.
-
-    `baseline` is the previous close.
-    """
+    """Intraday line chart, red above and green below `baseline` (the previous close)."""
     above = data['Close'].where(data['Close'] >= baseline)
     below = data['Close'].where(data['Close'] < baseline)
 
-    # Dotted line at the baseline as the up/down reference
     ref_line = pd.Series(baseline, index=data.index)
     addplot = [mpf.make_addplot(ref_line, color='#a0a0a0', linestyle='dotted', width=2)]
 
@@ -116,7 +110,7 @@ def generate_intraday_chart(ticker: str, data: pd.DataFrame, baseline: float) ->
 
 
 def generate_backtest_chart(ticker: str, result: BacktestResult) -> io.BytesIO:
-    """Generate a backtest chart: candlesticks + entry/exit markers + equity curve."""
+    """Backtest chart: price, entry/exit markers and equity curve."""
     data = result.data
 
     long_entries = [(t.entry_date, t.entry_price) for t in result.trades if t.side == "LONG"]
@@ -163,7 +157,7 @@ def generate_backtest_chart(ticker: str, result: BacktestResult) -> io.BytesIO:
 
 
 def _build_marker_series(data: pd.DataFrame, points: list[tuple[date, float]]) -> pd.Series:
-    """Convert a list of (date, price) into a marker series aligned to data.index, with NaN on non-trading days."""
+    """(date, price) points as a series aligned to `data.index`, NaN elsewhere."""
     marker = pd.Series(data=np.nan, index=data.index)
     for d, price in points:
         marker.loc[pd.Timestamp(d)] = price # pyright: ignore[reportCallIssue, reportArgumentType]

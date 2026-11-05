@@ -1,7 +1,4 @@
-"""Embed title assembly and snapshot building.
-
-Importing dc_bot_view pulls in discord but touches no network, token or database.
-"""
+"""Embed title assembly and snapshot building."""
 from datetime import datetime
 
 import pandas as pd
@@ -49,8 +46,7 @@ class TestSnapshotCurrentPrice:
 
 class TestSnapshotPreviousClose:
     def test_the_baseline_is_the_last_close_before_the_current_price(self):
-        # Intraday sits on the same day as the final daily row, so that row is today's
-        # own close and cannot be the baseline the change % is measured against.
+        # The last daily row is today's own close, so it cannot be the baseline
         history = make_ohlcv([100.0, 101.0, 102.0])
         bars = intraday([105.0], day=history.index[-1].date())
 
@@ -59,8 +55,7 @@ class TestSnapshotPreviousClose:
         assert snapshot.previous_close == 101.0
 
     def test_a_session_the_daily_rows_have_not_reached_yet_keeps_the_last_close(self):
-        # Today's daily row lands after the close, so during the session the newest
-        # stored close is the previous one.
+        # During the session the newest stored close is yesterday's
         history = make_ohlcv([100.0, 101.0, 102.0])
         tomorrow = (history.index[-1] + pd.Timedelta(days=1)).date()
         bars = intraday([105.0], day=tomorrow)
@@ -121,7 +116,7 @@ class TestSnapshotInputs:
         assert 'X.TW' in str(excinfo.value)
 
     def test_neither_frame_is_written_to(self):
-        # Both go on to the chart layer afterwards, so overlays stay its own decision.
+        # The chart layer still uses both frames
         history = make_ohlcv([100 + (i % 5) for i in range(40)])
         bars = intraday([105.0], day=history.index[-1].date())
         history_columns, intraday_columns = list(history.columns), list(bars.columns)
