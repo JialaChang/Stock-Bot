@@ -119,6 +119,10 @@
 
 `html_report.py` 提供共用的 HTML 頁面、表格與數字格式化。表頭、儲存格、標題與副標題的 HTML 跳脫都由這一層處理，呼叫端只傳純文字；`body` 只接受 `html_table` 產生的內容。`write_report` 會過濾檔名，確保輸出一定留在 `exports/` 裡。
 
+### 終端互動工具 (`src/cli/`)
+
+互動式回測與資料庫工具，由 `src/quant/backtest.py`、`src/database/database.py` 的 `__main__` 啟動。`console.py` 提供共用的 `rich` 輸出與單鍵選單。
+
 ### `dc_bot_view.py` (`src/bot/dc_bot_view.py`)
 
 `build_snapshot` 整理歷史與盤中資料，算出 Embed 需要的 RSI 與前一日收盤；有盤中資料時現價取最後一筆，否則取最後收盤價。`ChartToggleView` 負責切換日線圖與分時圖，5 分鐘後清除訊息。`send_*` 函式負責組合 Embed 與圖表附件。
@@ -195,5 +199,6 @@
 - 資料同步：歷史中斷、`Adj Close` 改寫與回補時間戳。
 - 資料庫連線：commit 與 rollback、離開後關閉、外鍵生效。
 - 代碼正規化、OHLC 調整、報表跳脫與匯出檔名安全。
+- 終端工具：單鍵選單的選項格式與重問、價格漲跌判斷、資料落後的交易日數。
 
 執行方式請見 [README](../README.md#測試)。

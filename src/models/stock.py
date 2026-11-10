@@ -1,6 +1,13 @@
 from dataclasses import dataclass
 from datetime import datetime
 
+
+def format_change(percent: float) -> str:
+    """'∆ 1.40%' / '∇ 0.52%', as the Embed and the terminal show a price change."""
+    icon = '∆' if percent >= 0 else '∇'
+    return f"{icon} {abs(percent):.2f}%"
+
+
 @dataclass
 class StockSnapshot:
     """What the `/stock` Embed shows."""
@@ -20,8 +27,7 @@ class StockSnapshot:
 
     @property
     def change_str(self) -> str:
-        icon = '∆' if self.change_percent >= 0 else '∇'
-        return f"{icon} {abs(self.change_percent):.2f}%"
+        return format_change(self.change_percent)
 
     @property
     def rsi_str(self) -> str:
@@ -29,6 +35,4 @@ class StockSnapshot:
 
     @property
     def latest_time_str(self) -> str:
-        if hasattr(self.latest_time, 'strftime'):
-            return self.latest_time.strftime('%m-%d %H:%M')
-        return str(self.latest_time)
+        return self.latest_time.strftime('%m-%d %H:%M')

@@ -92,11 +92,8 @@ async def stock_command(interaction: discord.Interaction, ticker: str):
             chart_jobs.append(asyncio.to_thread(generate_intraday_chart, stock_ticker, intraday_data, snapshot.previous_close))
         buffers = await asyncio.gather(*chart_jobs)
 
-        chart_bytes = [b.getvalue() for b in buffers]
-        for b in buffers:
-            b.close()
-        history_bytes = chart_bytes[0]
-        intraday_bytes = chart_bytes[1] if len(chart_bytes) > 1 else None
+        history_bytes = buffers[0].getvalue()
+        intraday_bytes = buffers[1].getvalue() if len(buffers) > 1 else None
 
         await send_stock_response(interaction, snapshot, history_bytes, intraday_bytes)
         logger.info(f"Response for '{stock_ticker}' sent successfully!")

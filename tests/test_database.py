@@ -3,6 +3,7 @@ import pytest
 
 from src.database import connect_db, get_stock, load_sql
 from src.database import database as database_module
+from src.database.database import price_change_classes
 
 
 PRICE_ROW = ('GHOST', '2026-01-02', 10, 11, 9, 10, 10, 100)
@@ -75,3 +76,20 @@ class TestCrudPersists:
 
         assert stock is not None
         assert stock['name'] == 'AA'
+
+
+class TestPriceChangeClasses:
+    """Rows arrive newest first, so each close is compared with the row after it."""
+
+    @staticmethod
+    def closes(*values):
+        return [{'close_price': v} for v in values]
+
+    def test_compares_each_day_with_the_one_before(self):
+        assert price_change_classes(self.closes(12, 10, 11, 11)) == ['up', 'down', 'flat', 'flat']
+
+    def test_the_oldest_row_has_nothing_to_compare_with(self):
+        assert price_change_classes(self.closes(10)) == ['flat']
+
+    def test_a_missing_close_is_flat_on_both_sides(self):
+        assert price_change_classes(self.closes(12, None, 10)) == ['flat', 'flat', 'flat']

@@ -19,6 +19,11 @@ def display_name(name: str, ticker: str) -> str:
     return f"{name} ({ticker})" if name != ticker else ticker
 
 
+def _change_color(value: float) -> int:
+    """Red for up, green for down, grey for flat (TW convention)."""
+    return 0xe74c3c if value > 0 else 0x2ecc71 if value < 0 else 0x676767
+
+
 def build_snapshot(ticker: str, name: str, history_data: pd.DataFrame,
                    intraday_data: pd.DataFrame, latest_time: datetime) -> StockSnapshot:
     """Assemble what the `/stock` Embed shows.
@@ -123,9 +128,8 @@ class ChartToggleView(View):
 
 async def send_stock_response(interaction: discord.Interaction, snapshot: StockSnapshot, history_bytes: bytes, intraday_bytes: bytes | None) -> None:
     """Send the `/stock` Embed."""
-    color = 0xe74c3c if snapshot.change_percent > 0 else (0x2ecc71 if snapshot.change_percent < 0 else 0x676767)
-
-    embed = discord.Embed(title=f"📈 {display_name(snapshot.name, snapshot.ticker)}", color=color)
+    embed = discord.Embed(title=f"📈 {display_name(snapshot.name, snapshot.ticker)}",
+                          color=_change_color(snapshot.change_percent))
     embed.add_field(name="Price", value=f"**{snapshot.current_price:.2f}**", inline=True)
     embed.add_field(name="Change", value=f"**{snapshot.change_str}**", inline=True)
     embed.add_field(name="RSI", value=f"**{snapshot.rsi_str}**", inline=True)
@@ -140,9 +144,8 @@ async def send_stock_response(interaction: discord.Interaction, snapshot: StockS
 
 async def send_backtest_response(interaction: discord.Interaction, result: BacktestResult, stock_name: str, strategy_label: str, chart_bytes: bytes) -> None:
     """Send the `/backtest` Embed."""
-    color = 0xe74c3c if result.total_return > 0 else (0x2ecc71 if result.total_return < 0 else 0x676767)
-
-    embed = discord.Embed(title=f"📊 {display_name(stock_name, result.ticker)} backtest ({strategy_label})", color=color)
+    embed = discord.Embed(title=f"📊 {display_name(stock_name, result.ticker)} backtest ({strategy_label})",
+                          color=_change_color(result.total_return))
     embed.add_field(name="Total return", value=f"**{result.total_return:.2f}%**", inline=True)
     embed.add_field(name="Win rate", value=f"**{result.win_rate:.2f}%**", inline=True)
     embed.add_field(name="Max drawdown", value=f"**{result.max_drawdown:.2f}%**", inline=True)

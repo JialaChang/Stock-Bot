@@ -31,6 +31,7 @@ stock-bot/
 ├── src/
 │   ├── api/          # HTTP API：路由與回應模型
 │   ├── bot/          # Discord 斜線指令與 UI 元件
+│   ├── cli/          # 終端互動工具：回測與資料庫管理
 │   ├── data/         # 讀取資料（fetcher）與寫入資料（sync）
 │   ├── quant/        # 技術指標、規則、策略與回測引擎
 │   ├── database/     # 資料庫初始化與 CRUD（SQL 放在 sql/*.sql）

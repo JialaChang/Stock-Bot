@@ -229,7 +229,6 @@ classDiagram
         +list~float~ equity
         +required_history_days(period_days) int
         +run(ticker, data, start) BacktestResult
-        +print_backtest_result(result) None
         +export_backtest_result_html(result) str
     }
 

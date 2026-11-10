@@ -30,6 +30,23 @@ _HISTORY_CHART_IND = {
     'SMA_20': ("#A137E4", '20MA'),
 }
 
+# Backtest trade markers: (side, is_entry, marker, color)
+_TRADE_MARKERS = [
+    ("LONG", True, '^', '#e73ce7'),
+    ("LONG", False, 'v', '#e73ce7'),
+    ("SHORT", True, '^', '#2eccbf'),
+    ("SHORT", False, 'v', '#2eccbf'),
+]
+
+
+def _render(data: pd.DataFrame, **plot_kwargs) -> io.BytesIO:
+    """Plot `data` with the shared style and return the PNG in memory."""
+    buffer = io.BytesIO()
+    mpf.plot(data, style=_MPF_STYLE, tight_layout=True, xrotation=0, savefig=buffer, **plot_kwargs)
+    buffer.seek(0)
+    plt.close('all')
+    return buffer
+
 
 def generate_history_chart(ticker: str, data: pd.DataFrame, days: int = 61) -> io.BytesIO:
     """Daily candlestick chart with moving averages and volume, as an in-memory PNG."""
@@ -45,26 +62,17 @@ def generate_history_chart(ticker: str, data: pd.DataFrame, days: int = 61) -> i
         for col, (color, label) in _HISTORY_CHART_IND.items()
     ]
 
-    buffer = io.BytesIO()
-
-    mpf.plot(
+    return _render(
         plot_data,
         type='candle',
         addplot=addplot,
-        style=_MPF_STYLE,
         title=f"\n{ticker}",
         show_nontrading=False,
         datetime_format='%m/%d',
-        tight_layout=True,
-        xrotation=0,
         volume=True,
         volume_alpha=0.3,
         panel_ratios=(4, 1),
-        savefig=buffer
     )
-    buffer.seek(0)
-    plt.close('all')
-    return buffer
 
 
 def generate_intraday_chart(ticker: str, data: pd.DataFrame, baseline: float) -> io.BytesIO:
@@ -85,75 +93,43 @@ def generate_intraday_chart(ticker: str, data: pd.DataFrame, baseline: float) ->
         dict(y1=data['Close'].values, y2=baseline, where=(data['Close'] < baseline).values, color='#2ecc71', alpha=0.1)
     ]
 
-    buffer = io.BytesIO()
-
-    mpf.plot(
+    return _render(
         data,
         type='line',
         linecolor='#555555',
         addplot=addplot,
         fill_between=fills,
-        style=_MPF_STYLE,
         title=f"\n{ticker}",
         datetime_format='%H:%M',
-        tight_layout=True,
-        xrotation=0,
         volume=True,
         volume_alpha=0.3,
         panel_ratios=(4, 1),
-        savefig=buffer
     )
-
-    buffer.seek(0)
-    plt.close('all')
-    return buffer
 
 
 def generate_backtest_chart(ticker: str, result: BacktestResult) -> io.BytesIO:
     """Backtest chart: price, entry/exit markers and equity curve."""
     data = result.data
 
-    long_entries = [(t.entry_date, t.entry_price) for t in result.trades if t.side == "LONG"]
-    long_exits = [(t.exit_date, t.exit_price) for t in result.trades if t.side == "LONG"]
-    short_entries = [(t.entry_date, t.entry_price) for t in result.trades if t.side == "SHORT"]
-    short_exits = [(t.exit_date, t.exit_price) for t in result.trades if t.side == "SHORT"]
-
-    marker_long_entries = _build_marker_series(data, long_entries)
-    marker_long_exits = _build_marker_series(data, long_exits)
-    marker_short_entries = _build_marker_series(data, short_entries)
-    marker_short_exits = _build_marker_series(data, short_exits)
-
     addplot = [
         mpf.make_addplot(result.equity_curve, panel=1, color='#3498db', ylabel='Equity', width=1.2),
     ]
-    if marker_long_entries.notna().any():
-        addplot.append(mpf.make_addplot(marker_long_entries, type='scatter', markersize=40, marker='^', color="#e73ce7"))
-    if marker_long_exits.notna().any():
-        addplot.append(mpf.make_addplot(marker_long_exits, type='scatter', markersize=40, marker='v', color='#e73ce7'))
-    if marker_short_entries.notna().any():
-        addplot.append(mpf.make_addplot(marker_short_entries, type='scatter', markersize=40, marker='^', color="#2eccbf"))
-    if marker_short_exits.notna().any():
-        addplot.append(mpf.make_addplot(marker_short_exits, type='scatter', markersize=40, marker='v', color='#2eccbf'))
+    for side, is_entry, marker, color in _TRADE_MARKERS:
+        points = [(t.entry_date, t.entry_price) if is_entry else (t.exit_date, t.exit_price)
+                  for t in result.trades if t.side == side]
+        series = _build_marker_series(data, points)
+        if series.notna().any():
+            addplot.append(mpf.make_addplot(series, type='scatter', markersize=40, marker=marker, color=color))
 
-    buffer = io.BytesIO()
-
-    mpf.plot(
+    return _render(
         data,
         type='candle' if len(data) <= _MAX_CANDLES else 'line',
         addplot=addplot,
-        style=_MPF_STYLE,
         title=f"\n{ticker}",
         show_nontrading=False,
         datetime_format='%m/%d',
-        tight_layout=True,
-        xrotation=0,
         panel_ratios=(4, 2),
-        savefig=buffer
     )
-
-    buffer.seek(0)
-    plt.close('all')
-    return buffer
 
 
 def _build_marker_series(data: pd.DataFrame, points: list[tuple[date, float]]) -> pd.Series:

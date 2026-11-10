@@ -80,89 +80,32 @@ def get_daily_prices(ticker: str, limit: int = 30) -> list[dict[str, Any]]:
         return [dict(row) for row in cursor.fetchall()]
 
 
-def _menu_init_database():
-    init_database()
-    print("Database initialization complete.")
-
-
-def _menu_insert_stock():
-    ticker = input("Enter ticker (e.g. 2330.TW): ").strip()
-    name   = input("Enter stock name: ").strip()
-    market = input("Enter market (TW / US / INDEX): ").strip()
-    insert_stock(ticker, name, market)
-    print(f"Inserted/Updated: {ticker} {name}")
-
-
-def _menu_delete_stock():
-    ticker = input("Enter the ticker to delete: ").strip()
-    confirm = input(f"Delete {ticker} and all its historical prices? (y/N) ").strip().lower()
-    if confirm == 'y':
-        delete_stock(ticker)
-        print(f"Deleted {ticker}!")
-    else:
-        print("Cancelled...")
-
-
-def _menu_get_stock():
-    ticker = input("Enter ticker: ").strip()
-    info = get_stock(ticker)
-    if info:
-        print("\n[Stock master record]")
-        for key, value in info.items():
-            print(f"  {key:<8} : {value}")
-    else:
-        print(f"No master record found for {ticker}...")
-
-
-def _menu_get_prices():
-    ticker = input("Enter ticker: ").strip()
-    try:
-        limit = int(input("Number of records (default 10): ").strip() or "10")
-    except ValueError:
-        limit = 10
-    prices = get_daily_prices(ticker, limit=limit)
-    if not prices:
-        print(f"No price data found for {ticker}...")
-        return
-
-    if len(prices) > 50:
-        _export_prices_html(ticker, prices)
-        return
-
-    print(f"\n[{ticker} latest {len(prices)} prices]")
-    print(f"{'Date':<12} | {'Open':>8} | {'Close':>8} | {'AdjClose':>8} | {'Volume':>12}")
-    print("-" * 60)
-    for p in prices:
-        open_p  = p.get('open_price')
-        close_p = p.get('close_price')
-        adj_close_p = p.get('adjust_close_price')
-        vol     = p.get('volume')
-        open_s  = f'{open_p:.2f}'  if open_p  is not None else 'N/A'
-        close_s = f'{close_p:.2f}' if close_p is not None else 'N/A'
-        adj_close_s = f'{adj_close_p:.2f}' if adj_close_p is not None else 'N/A'
-        vol_s   = f'{vol:.0f}'     if vol     is not None else 'N/A'
-        print(f"{p['date']:<12} | {open_s:>8} | {close_s:>8} | {adj_close_s:>8} | {vol_s:>12}")
-
-
-def _export_prices_html(ticker: str, prices: list[dict[str, Any]]):
-    """Write price records to an HTML report under exports/."""
-    from src.utils.html_report import html_document, html_table, fmt_num, fmt_int, write_report
-
-    rows = []
+def price_change_classes(prices: list[dict[str, Any]]) -> list[str]:
+    """'up' / 'down' / 'flat' per row, against the previous trading day."""
+    classes = []
     # Newest first, so the previous trading day is the next row
     for i, p in enumerate(prices):
         close_p = p.get('close_price')
         prev_close = prices[i + 1].get('close_price') if i + 1 < len(prices) else None
         if close_p is not None and prev_close is not None:
-            cls = 'up' if close_p > prev_close else 'down' if close_p < prev_close else 'flat'
+            classes.append('up' if close_p > prev_close else 'down' if close_p < prev_close else 'flat')
         else:
-            cls = 'flat'
+            classes.append('flat')
+    return classes
+
+
+def export_prices_html(ticker: str, prices: list[dict[str, Any]]):
+    """Write price records to an HTML report under exports/."""
+    from src.utils.html_report import html_document, html_table, fmt_num, fmt_int, write_report
+
+    rows = []
+    for p, cls in zip(prices, price_change_classes(prices)):
         rows.append([
             p.get('date', ''),
             fmt_num(p.get('open_price')),
             fmt_num(p.get('high_price')),
             fmt_num(p.get('low_price')),
-            (fmt_num(close_p), cls),
+            (fmt_num(p.get('close_price')), cls),
             fmt_num(p.get('adjust_close_price')),
             fmt_int(p.get('volume')),
         ])
@@ -179,30 +122,6 @@ def _export_prices_html(ticker: str, prices: list[dict[str, Any]]):
     print(f"\n>> {len(prices)} records exported to: {filepath}")
 
 
-_MENU = [
-    ("Initialize database", _menu_init_database),
-    ("Insert / Update stock master record", _menu_insert_stock),
-    ("Delete stock", _menu_delete_stock),
-    ("Query stock master record", _menu_get_stock),
-    ("Query historical prices", _menu_get_prices),
-]
-
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-
-    while True:
-        print("\n========== Stock Database Manager ==========")
-        for i, (label, _) in enumerate(_MENU, start=1):
-            print(f"  {i}. {label}")
-        print("  0. Exit")
-        print("============================================")
-
-        choice = input("Choose an option: ").strip()
-        if choice == "0":
-            print("Goodbye!")
-            break
-        elif choice.isdigit() and 1 <= int(choice) <= len(_MENU):
-            print()
-            _MENU[int(choice) - 1][1]()
-        else:
-            print("Invalid option, please try again...")
+    from src.cli.cli_database import run
+    run()

@@ -6,6 +6,7 @@ from src.quant.errors import InsufficientDataError
 
 
 MACD_Z_WINDOW = 60  # Rows the MACD line's scale is measured over
+MA_LENGTHS = (5, 10, 20, 60, 120, 200, 240)
 
 
 def compute_indicators(ticker: str, data: pd.DataFrame, columns: list[str] | None = None) -> None:
@@ -26,29 +27,13 @@ def compute_indicators(ticker: str, data: pd.DataFrame, columns: list[str] | Non
     if should('RSI'):
         data['RSI'] = pta.rsi(close, length=14)
 
-    # ── SMA ───────────────────────────────────────────────────
-    if should('SMA_5'):
-        data['SMA_5'] = pta.sma(close, length=5)
-    if should('SMA_10'):
-        data['SMA_10'] = pta.sma(close, length=10)
-    if should('SMA_20'):
-        data['SMA_20'] = pta.sma(close, length=20)
-    if should('SMA_60'):
-        data['SMA_60'] = pta.sma(close, length=60)
-    if should('SMA_200'):
-        data['SMA_200'] = pta.sma(close, length=200)
-
-    # ── EMA ───────────────────────────────────────────────────
-    if should('EMA_5'):
-        data['EMA_5'] = pta.ema(close, length=5)
-    if should('EMA_10'):
-        data['EMA_10'] = pta.ema(close, length=10)
-    if should('EMA_20'):
-        data['EMA_20'] = pta.ema(close, length=20)
-    if should('EMA_60'):
-        data['EMA_60'] = pta.ema(close, length=60)
-    if should('EMA_200'):
-        data['EMA_200'] = pta.ema(close, length=200)
+    # ── SMA / EMA ─────────────────────────────────────────────
+    for n in MA_LENGTHS:
+        if should(f'SMA_{n}'):
+            data[f'SMA_{n}'] = pta.sma(close, length=n)
+    for n in MA_LENGTHS:
+        if should(f'EMA_{n}'):
+            data[f'EMA_{n}'] = pta.ema(close, length=n)
 
     # ── MACD ──────────────────────────────────────────────────
     # DIF = EMA(12) - EMA(26), DEM = EMA(DIF, 9), OSC = DIF - DEM.

@@ -7,7 +7,7 @@ from src.data import StockDataFetcher
 from src.data.sync import download_ohlcv, extract_ticker_frame, records_from_frame, upsert_records
 from src.database import connect_db, init_database, load_sql
 from src.database import database as database_module
-from src.database.database import _export_prices_html, get_daily_prices
+from src.database.database import export_prices_html, get_daily_prices
 from src.quant import BacktestEngine, EMAStrategy
 from src.utils import html_report
 
@@ -43,7 +43,7 @@ def backtest_sample() -> None:
 
 
 def prices_sample() -> None:
-    _export_prices_html(TICKER, get_daily_prices(TICKER, limit=PRICE_ROWS))
+    export_prices_html(TICKER, get_daily_prices(TICKER, limit=PRICE_ROWS))
     newest = max((os.path.join(html_report._EXPORT_DIR, f)
                   for f in os.listdir(html_report._EXPORT_DIR)), key=os.path.getmtime)
     shutil.copy(newest, os.path.join(SAMPLE_DIR, 'prices.html'))
