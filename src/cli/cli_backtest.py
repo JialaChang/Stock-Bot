@@ -6,12 +6,13 @@ from rich import box
 from rich.table import Table
 from rich.text import Text
 
-from src.cli.console import ask, choose, console, run_interactive, warn, CHANGE_STYLES, signed_style
-from src.data import StockDataFetcher
-from src.models import BacktestResult
-from src.quant import (BacktestEngine, PERIOD_DAYS, InsufficientDataError, Strategy,
-                       RSIStrategy, EMAStrategy, gated_strategy, voting_strategy)
-from src.quant.backtest import summary_rows
+from src.cli.console import ask, choose, console, run_interactive, success, warn, CHANGE_STYLES, signed_style
+from src.data.fetcher import StockDataFetcher
+from src.models.trade import BacktestResult
+from src.quant.backtest import BacktestEngine, PERIOD_DAYS
+from src.quant.errors import InsufficientDataError
+from src.quant.strategy import Strategy, RSIStrategy, EMAStrategy, gated_strategy, voting_strategy
+from src.utils.reports import export_backtest_html, summary_rows
 
 
 StrategyChoice = tuple[str, Callable[[], Strategy]]  # (label, factory)
@@ -53,12 +54,12 @@ def print_result(result: BacktestResult, trades_shown: int = 10) -> None:
     console.print(table)
 
 
-def print_comparison(results: list[tuple[str, BacktestEngine, BacktestResult]]) -> None:
+def print_comparison(results: list[tuple[str, BacktestResult]]) -> None:
     table = Table(box=box.SIMPLE_HEAD, show_edge=False)
     table.add_column("Strategy")
     for header in ("Return", "Win rate", "Max DD", "Trades"):
         table.add_column(header, justify="right")
-    for label, _, r in results:
+    for label, r in results:
         table.add_row(label,
                       Text(f"{r.total_return:+.2f}%", style=signed_style(r.total_return)),
                       f"{r.win_rate:.2f}%",
@@ -101,7 +102,7 @@ def _choose_next() -> str:
 
 
 def _run_strategies(fetcher: StockDataFetcher, strategies: list[StrategyChoice],
-                    period: str) -> list[tuple[str, BacktestEngine, BacktestResult]]:
+                    period: str) -> list[tuple[str, BacktestResult]]:
     period_days = PERIOD_DAYS[period]
     start = datetime.now() - timedelta(days=period_days)
     results = []
@@ -113,7 +114,7 @@ def _run_strategies(fetcher: StockDataFetcher, strategies: list[StrategyChoice],
             warn(f"No historical data found for '{fetcher.ticker}'...")
             return []
         try:
-            results.append((label, engine, engine.run(fetcher.ticker, data, start=start)))
+            results.append((label, engine.run(fetcher.ticker, data, start=start)))
         except InsufficientDataError as e:
             warn(f"{label}: {e}")
     return results
@@ -132,14 +133,17 @@ def main() -> None:
         console.rule(Text(f"{fetcher.ticker} · {labels} · {period}"))
         results = _run_strategies(fetcher, strategies, period)
         if len(results) == 1:
-            print_result(results[0][2])
+            print_result(results[0][1])
         elif results:
             print_comparison(results)
 
         console.print()
         if results and choose("Export HTML report?", {"y": "yes", "n": "no"}) == "y":
-            for _, engine, result in results:
-                engine.export_backtest_result_html(result)
+            for label, result in results:
+                try:
+                    success(f"Exported to: {export_backtest_html(result, label)}")
+                except OSError as e:
+                    warn(f"Export failed: {e}")
 
         step = _choose_next()
         if step == "q":

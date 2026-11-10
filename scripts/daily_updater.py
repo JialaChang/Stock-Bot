@@ -2,9 +2,8 @@
 import time
 import logging
 
-from src.database import connect_db
-from src.data.sync import (download_ohlcv, extract_ticker_frame, records_from_frame, upsert_records,
-                           needs_full_refresh, fetch_all_tickers)
+from src.database.database import connect_db
+from src.data.sync import download_ohlcv, extract_ticker_frame, records_from_frame, upsert_records, needs_full_refresh, fetch_all_tickers
 
 
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
@@ -69,6 +68,7 @@ def update_stock_data() -> list[str]:
         logger.error(f"Daily update failed: {e}")
 
     return stale_tickers
+
 
 if __name__ == "__main__":
     stale = update_stock_data()

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from datetime import date
 
-from src.models import BacktestResult
+from src.models.trade import BacktestResult
 
 
 matplotlib.use('Agg')  # Headless
@@ -46,6 +46,14 @@ def _render(data: pd.DataFrame, **plot_kwargs) -> io.BytesIO:
     buffer.seek(0)
     plt.close('all')
     return buffer
+
+
+def _build_marker_series(data: pd.DataFrame, points: list[tuple[date, float]]) -> pd.Series:
+    """(date, price) points as a series aligned to `data.index`, NaN elsewhere."""
+    marker = pd.Series(data=np.nan, index=data.index)
+    for d, price in points:
+        marker.loc[pd.Timestamp(d)] = price # pyright: ignore[reportCallIssue, reportArgumentType]
+    return marker
 
 
 def generate_history_chart(ticker: str, data: pd.DataFrame, days: int = 61) -> io.BytesIO:
@@ -130,11 +138,3 @@ def generate_backtest_chart(ticker: str, result: BacktestResult) -> io.BytesIO:
         datetime_format='%m/%d',
         panel_ratios=(4, 2),
     )
-
-
-def _build_marker_series(data: pd.DataFrame, points: list[tuple[date, float]]) -> pd.Series:
-    """(date, price) points as a series aligned to `data.index`, NaN elsewhere."""
-    marker = pd.Series(data=np.nan, index=data.index)
-    for d, price in points:
-        marker.loc[pd.Timestamp(d)] = price # pyright: ignore[reportCallIssue, reportArgumentType]
-    return marker

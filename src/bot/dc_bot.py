@@ -6,11 +6,13 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import asyncio
 
-from src.data import StockDataFetcher
-from src.quant import (BacktestEngine, RSIStrategy, EMAStrategy, PERIOD_DAYS,
-                       InsufficientDataError, gated_strategy, voting_strategy)
-from src.utils import generate_history_chart, generate_intraday_chart, generate_backtest_chart
-from src.bot import build_snapshot, send_stock_response, send_backtest_response
+from src.data.snapshot import NoHistoryError, load_stock
+from src.data.fetcher import StockDataFetcher
+from src.quant.backtest import BacktestEngine, PERIOD_DAYS
+from src.quant.strategy import RSIStrategy, EMAStrategy, gated_strategy, voting_strategy
+from src.quant.errors import InsufficientDataError
+from src.utils.visualizer import generate_history_chart, generate_intraday_chart, generate_backtest_chart
+from src.bot.dc_bot_view import send_stock_response, send_backtest_response
 
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,12 @@ if not TOKEN:
 if not GUILD:
     logger.info("GUILD_ID not found in environment variables")
 
+
+STRATEGIES = {"RSI": RSIStrategy, "EMA": EMAStrategy,
+              "Gated": gated_strategy, "Vote": voting_strategy}
+BOT_PERIODS = ["1mo", "3mo", "6mo", "1y", "2y", "3y", "5y", "10y"]
+
+
 class StockBot(commands.Bot):
     async def setup_hook(self):
         if GUILD:
@@ -39,6 +47,7 @@ class StockBot(commands.Bot):
             await self.tree.sync()
         else:
             await self.tree.sync()
+
 
 intents = discord.Intents.default()
 bot = StockBot(command_prefix='$', intents=intents)
@@ -64,28 +73,8 @@ async def stock_command(interaction: discord.Interaction, ticker: str):
     await interaction.response.defer()  # Discord times out after 3 seconds
 
     try:
-        # Blocking calls go to a thread; the constructor hits SQLite too
-        fetcher = await asyncio.to_thread(StockDataFetcher, ticker)
-        stock_name = await asyncio.to_thread(fetcher.fetch_stock_name)
-        stock_ticker = fetcher.ticker
-
-        history_data, intraday_data = await asyncio.gather(
-            asyncio.to_thread(fetcher.fetch_historical_data),
-            asyncio.to_thread(fetcher.fetch_intraday_data)
-        )
-
-        if history_data.empty:
-            await interaction.followup.send(f"Could not retrieve data for `{stock_ticker}`...\n> Please check that the ticker is correct, or the stock may not be in the database yet")
-            logger.warning(f"Failed to retrieve data for '{stock_ticker}'...")
-            return
-        if intraday_data.empty:
-            logger.info(f"No intraday data for '{stock_ticker}', showing the daily chart only.")
-
-        latest_time = fetcher.latest_time()
-
-        snapshot = await asyncio.to_thread(
-            build_snapshot, stock_ticker, stock_name, history_data, intraday_data, latest_time
-        )
+        snapshot, history_data, intraday_data = await load_stock(ticker)
+        stock_ticker = snapshot.ticker
 
         chart_jobs = [asyncio.to_thread(generate_history_chart, stock_ticker, history_data)]
         if not intraday_data.empty:
@@ -98,6 +87,8 @@ async def stock_command(interaction: discord.Interaction, ticker: str):
         await send_stock_response(interaction, snapshot, history_bytes, intraday_bytes)
         logger.info(f"Response for '{stock_ticker}' sent successfully!")
 
+    except NoHistoryError as e:
+        await interaction.followup.send(f"Could not retrieve data for `{e.ticker}`...\n> Please check that the ticker is correct, or the stock may not be in the database yet")
     except InsufficientDataError as e:
         logger.warning(f"Insufficient data for '{ticker}': {e}")
         await interaction.followup.send(f"Not enough historical data for `{ticker}`...\n> {e}")
@@ -105,10 +96,6 @@ async def stock_command(interaction: discord.Interaction, ticker: str):
         logger.error(f"Error sending response for '{ticker}': {e}")
         await interaction.followup.send("An error occurred, please try again later or check that the ticker is correct...")
 
-
-STRATEGIES = {"RSI": RSIStrategy, "EMA": EMAStrategy,
-              "Gated": gated_strategy, "Vote": voting_strategy}
-BOT_PERIODS = ["1mo", "3mo", "6mo", "1y", "2y", "3y", "5y", "10y"]
 
 @bot.tree.command(name="backtest", description="Enter a ticker to run a strategy backtest and show a chart (TW/US stocks and some indices only)")
 @discord.app_commands.choices(

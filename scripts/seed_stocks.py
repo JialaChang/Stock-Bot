@@ -4,11 +4,30 @@ import twstock
 import pandas as pd
 import logging
 
-from src.database import connect_db, init_database, load_sql
+from src.database.database import connect_db, init_database, load_sql
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
+
+
+# Select tables by id="constituents", not by position: a positional index breaks whenever
+# an article gains an unrelated table. `min_rows` makes a layout change fail loudly
+# instead of half-seeding the stocks table.
+WIKIPEDIA_INDICES = {
+    "S&P 500": {
+        "url": 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies',
+        "ticker_col": 'Symbol',
+        "name_col": 'Security',
+        "min_rows": 450,
+    },
+    "Nasdaq 100": {
+        "url": 'https://en.wikipedia.org/wiki/List_of_NASDAQ-100_companies',
+        "ticker_col": 'Ticker',
+        "name_col": 'Company',
+        "min_rows": 95,
+    },
+}
 
 
 def import_taiwan_stocks(conn: sqlite3.Connection):
@@ -30,25 +49,6 @@ def import_taiwan_stocks(conn: sqlite3.Connection):
 
     conn.commit()
     logger.info(f"Imported {count} Taiwan stocks!")
-
-
-# Select tables by id="constituents", not by position: a positional index breaks whenever
-# an article gains an unrelated table. `min_rows` makes a layout change fail loudly
-# instead of half-seeding the stocks table.
-WIKIPEDIA_INDICES = {
-    "S&P 500": {
-        "url": 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies',
-        "ticker_col": 'Symbol',
-        "name_col": 'Security',
-        "min_rows": 450,
-    },
-    "Nasdaq 100": {
-        "url": 'https://en.wikipedia.org/wiki/List_of_NASDAQ-100_companies',
-        "ticker_col": 'Ticker',
-        "name_col": 'Company',
-        "min_rows": 95,
-    },
-}
 
 
 def import_us_stocks(conn: sqlite3.Connection):
@@ -131,6 +131,7 @@ def import_global_indices(conn: sqlite3.Connection):
 
     conn.commit()
     logger.info(f"Imported {len(records)} global market indices!")
+
 
 if __name__ == "__main__":
     init_database()

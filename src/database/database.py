@@ -1,7 +1,6 @@
 import sqlite3
 import os
 import logging
-from datetime import datetime
 from functools import lru_cache
 from typing import Any
 from contextlib import contextmanager
@@ -33,6 +32,7 @@ def connect_db() -> Generator[sqlite3.Connection]:
             yield connect
     finally:
         connect.close()
+
 
 def init_database():
     """Initialize the SQLite database tables."""
@@ -78,48 +78,6 @@ def get_daily_prices(ticker: str, limit: int = 30) -> list[dict[str, Any]]:
         cursor = connect.cursor()
         cursor.execute(load_sql('select_daily_prices'), (ticker, limit))
         return [dict(row) for row in cursor.fetchall()]
-
-
-def price_change_classes(prices: list[dict[str, Any]]) -> list[str]:
-    """'up' / 'down' / 'flat' per row, against the previous trading day."""
-    classes = []
-    # Newest first, so the previous trading day is the next row
-    for i, p in enumerate(prices):
-        close_p = p.get('close_price')
-        prev_close = prices[i + 1].get('close_price') if i + 1 < len(prices) else None
-        if close_p is not None and prev_close is not None:
-            classes.append('up' if close_p > prev_close else 'down' if close_p < prev_close else 'flat')
-        else:
-            classes.append('flat')
-    return classes
-
-
-def export_prices_html(ticker: str, prices: list[dict[str, Any]]):
-    """Write price records to an HTML report under exports/."""
-    from src.utils.html_report import html_document, html_table, fmt_num, fmt_int, write_report
-
-    rows = []
-    for p, cls in zip(prices, price_change_classes(prices)):
-        rows.append([
-            p.get('date', ''),
-            fmt_num(p.get('open_price')),
-            fmt_num(p.get('high_price')),
-            fmt_num(p.get('low_price')),
-            (fmt_num(p.get('close_price')), cls),
-            fmt_num(p.get('adjust_close_price')),
-            fmt_int(p.get('volume')),
-        ])
-
-    table = html_table(['Date', 'Open', 'High', 'Low', 'Close', 'AdjClose', 'Volume'], rows)
-    data_range = f"{prices[-1].get('date', '?')} ~ {prices[0].get('date', '?')}"
-    html = html_document(
-        f'{ticker} — {len(prices)} records',
-        table,
-        subtitle=f"Data {data_range} · Generated {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-    )
-    filepath = write_report(html, f'{ticker}_prices')
-
-    print(f"\n>> {len(prices)} records exported to: {filepath}")
 
 
 if __name__ == "__main__":

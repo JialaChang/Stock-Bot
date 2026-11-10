@@ -5,9 +5,11 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from src.models import Position, Signal
-from src.quant import (BacktestEngine, CompositeStrategy, Decay, Rule, compute_indicators,
-                       gated_strategy, voting_strategy)
+from src.models.trade import Position, Signal
+from src.quant.backtest import BacktestEngine
+from src.quant.strategy import CompositeStrategy, gated_strategy, voting_strategy
+from src.quant.rule import Decay, Rule
+from src.quant.indicator import compute_indicators
 from src.quant.backtest import history_window
 from tests.conftest import make_ohlcv
 

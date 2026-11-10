@@ -1,9 +1,10 @@
 import math
 import pandas as pd
-from datetime import date as date_type, datetime
+from datetime import date as date_type
 
-from src.models import BacktestResult, Trade, Position, Signal, Side
-from src.quant import compute_indicators, Strategy
+from src.models.trade import BacktestResult, Trade, Position, Signal, Side
+from src.quant.indicator import compute_indicators
+from src.quant.strategy import Strategy
 from src.quant.errors import InsufficientDataError
 
 
@@ -165,74 +166,6 @@ class BacktestEngine:
                                  self.position.side,
                                  self.position.shares))
         self.position = None
-
-    def export_backtest_result_html(self, result: BacktestResult) -> str:
-        """Write the backtest result to an HTML report and return the file path."""
-        from src.utils.html_report import html_document, html_table, fmt_int, fmt_num, write_report
-
-        def signal_reason(sig: Signal) -> str:
-            reasons = [name for name, holds in sig.conditions.items() if holds]
-            return ', '.join(reasons) if reasons else 'N/A'
-
-        summary_table = html_table(None, [
-            [label, (text, cls) if cls else text] for label, text, cls in summary_rows(result)
-        ])
-
-        trade_rows = []
-        for t in result.trades:
-            roi = t.return_on_investment
-            trade_rows.append([
-                t.side,
-                (f'{roi:+.2f}%', _signed_class(roi)),
-                (fmt_num(t.profit_and_loss), _signed_class(t.profit_and_loss)),
-                fmt_int(t.shares),
-                str(t.entry_date),
-                fmt_num(t.entry_price),
-                signal_reason(t.entry_signal),
-                str(t.exit_date),
-                fmt_num(t.exit_price),
-                signal_reason(t.exit_signal),
-            ])
-        trades_table = html_table(
-            ['Side', 'Return', 'P&L', 'Shares', 'Entry Date', 'Entry', 'Entry Reason',
-             'Exit Date', 'Exit', 'Exit Reason'],
-            trade_rows,
-        )
-
-        body = (
-            f'<h2>Performance</h2>\n{summary_table}\n'
-            f'<h2>Trades</h2>\n{trades_table}'
-        )
-        index = result.equity_curve.index
-        data_range = f"{index[0].strftime('%Y-%m-%d')} ~ {index[-1].strftime('%Y-%m-%d')}"
-        html = html_document(
-            f'{result.ticker} backtest — {self.strategy.__class__.__name__}',
-            body,
-            subtitle=f"Data {data_range} · Generated {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        )
-        filepath = write_report(html, f'{result.ticker}_backtest')
-
-        print(f">> Backtest report exported to: {filepath}")
-        return filepath
-
-
-def _signed_class(v: float) -> str:
-    return 'up' if v > 0 else 'down' if v < 0 else 'flat'
-
-
-def summary_rows(result: BacktestResult) -> list[tuple[str, str, str | None]]:
-    """Performance summary as (label, text, css_class) rows, shared by the terminal and HTML."""
-    curve = result.equity_curve
-    return [
-        ('Total return', f'{result.total_return:+.2f}%', _signed_class(result.total_return)),
-        ('Win rate', f'{result.win_rate:.2f}%', None),
-        ('Max drawdown', f'{result.max_drawdown:.2f}%', 'down'),
-        ('Trade count', str(result.trade_count), None),
-        ('Initial capital', f'{curve.iloc[0]:,.2f}', None),
-        ('Final capital', f'{curve.iloc[-1]:,.2f}', None),
-        ('Equity curve min', f'{curve.min():,.2f}', None),
-        ('Equity curve max', f'{curve.max():,.2f}', None),
-    ]
 
 
 if __name__ == "__main__":

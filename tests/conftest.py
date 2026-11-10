@@ -3,7 +3,7 @@ import sqlite3
 import pandas as pd
 import pytest
 
-from src.database import load_sql
+from src.database.database import load_sql
 
 
 @pytest.fixture

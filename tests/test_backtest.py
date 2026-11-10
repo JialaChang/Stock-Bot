@@ -1,8 +1,10 @@
 import pytest
 from pandas import DataFrame
 
-from src.models import Position, Signal
-from src.quant import BacktestEngine, EMAStrategy, InsufficientDataError, RSIStrategy, Strategy
+from src.models.trade import Position, Signal
+from src.quant.backtest import BacktestEngine
+from src.quant.strategy import EMAStrategy, RSIStrategy, Strategy
+from src.quant.errors import InsufficientDataError
 from src.quant.backtest import INITIAL_CAPITAL, STOP_LOSS, history_window
 from tests.conftest import make_ohlcv
 

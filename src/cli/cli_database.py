@@ -7,11 +7,11 @@ from rich.table import Table
 from rich.text import Text
 
 from src.cli.console import ask, choose, console, run_interactive, success, warn, CHANGE_STYLES, signed_style
-from src.data import StockDataFetcher
-from src.database.database import (delete_stock, export_prices_html, get_daily_prices, get_stock,
-                                   init_database, insert_stock, price_change_classes)
+from src.data.fetcher import StockDataFetcher
+from src.database.database import delete_stock, get_daily_prices, get_stock, init_database, insert_stock
 from src.models.stock import format_change
-from src.utils.html_report import fmt_num, fmt_int
+from src.utils.html_page import fmt_num, fmt_int
+from src.utils.reports import export_prices_html, price_change_classes
 
 
 STALE_AFTER_TRADING_DAYS = 5
@@ -23,9 +23,24 @@ def trading_days_behind(last_date: str, today: date) -> int:
     return int(np.busday_count(last_date, today))
 
 
-def _ask_ticker(prompt: str) -> str:
-    """Read a ticker and resolve it the way the bot does (2330 -> 2330.TW)."""
-    return StockDataFetcher(ask(prompt)).ticker
+def _ask_ticker(prompt: str) -> StockDataFetcher | None:
+    """Resolve a ticker the way the bot does (2330 -> 2330.TW) and show its name; None if not stored."""
+    raw = ask(prompt)
+    fetcher = StockDataFetcher(raw)
+    if not fetcher.stock_exists():
+        warn(f"Stock '{raw}' not found, please check the ticker...")
+        return None
+    console.print(Text(f"{fetcher.fetch_stock_name()} ({fetcher.ticker})", style="bold"))
+    return fetcher
+
+
+def _key_value_table(rows) -> Table:
+    table = Table(show_header=False, box=None)
+    table.add_column(style="bold")
+    table.add_column()
+    for key, value in rows:
+        table.add_row(key, value if isinstance(value, Text) else str(value))
+    return table
 
 
 def _menu_init_database():
@@ -42,32 +57,20 @@ def _menu_insert_stock():
 
 
 def _menu_delete_stock():
-    ticker = _ask_ticker("Enter the ticker to delete")
-    info = get_stock(ticker)
-    if info is None:
-        warn(f"No master record found for {ticker}...")
+    fetcher = _ask_ticker("Enter the ticker to delete")
+    if fetcher is None:
         return
-    if choose(f"Delete {ticker} ({info['name']}) and all its historical prices?", {"y": "yes", "n": "no"}) == "y":
-        delete_stock(ticker)
-        success(f"Deleted {ticker}!")
+    if choose("Delete it and all its historical prices?", {"y": "yes", "n": "no"}) == "y":
+        delete_stock(fetcher.ticker)
+        success(f"Deleted {fetcher.ticker}!")
     else:
         console.print("Cancelled...")
 
 
-def _key_value_table(rows) -> Table:
-    table = Table(show_header=False, box=None)
-    table.add_column(style="bold")
-    table.add_column()
-    for key, value in rows:
-        table.add_row(key, value if isinstance(value, Text) else str(value))
-    return table
-
-
 def _menu_get_stock():
-    fetcher = StockDataFetcher(ask("Enter ticker"))
-    info = get_stock(fetcher.ticker)
-    if not info:
-        warn(f"No master record found for {fetcher.ticker}...")
+    fetcher = _ask_ticker("Enter ticker")
+    info = get_stock(fetcher.ticker) if fetcher else None
+    if fetcher is None or info is None:
         return
     console.print()
     coverage = fetcher.get_data_range()
@@ -99,7 +102,10 @@ def _menu_get_stock():
 
 
 def _menu_get_prices():
-    ticker = _ask_ticker("Enter ticker")
+    fetcher = _ask_ticker("Enter ticker")
+    if fetcher is None:
+        return
+    ticker = fetcher.ticker
     try:
         limit = int(ask("Number of records"))
     except ValueError:
@@ -113,7 +119,10 @@ def _menu_get_prices():
         return
 
     if len(prices) > 50:
-        export_prices_html(ticker, prices)
+        try:
+            success(f"{len(prices)} records exported to: {export_prices_html(ticker, prices)}")
+        except OSError as e:
+            warn(f"Export failed: {e}")
         return
 
     table = Table(title=f"{ticker} latest {len(prices)} prices", box=box.SIMPLE_HEAD, show_edge=False)

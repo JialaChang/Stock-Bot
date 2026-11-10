@@ -2,7 +2,8 @@ from datetime import date, datetime
 import pandas as pd
 import pytest
 
-from src.models import BacktestResult, Signal, StockSnapshot, Trade
+from src.models.trade import BacktestResult, Signal, Trade
+from src.models.stock import StockSnapshot
 
 
 HOLD = Signal("HOLD", {}, {})

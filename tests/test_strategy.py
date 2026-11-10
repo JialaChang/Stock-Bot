@@ -3,8 +3,8 @@ from datetime import date
 
 import pandas as pd
 
-from src.models import Position, Signal
-from src.quant import EMAStrategy, RSIStrategy
+from src.models.trade import Position, Signal
+from src.quant.strategy import EMAStrategy, RSIStrategy
 from src.quant.backtest import history_window
 
 

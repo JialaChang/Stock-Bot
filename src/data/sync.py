@@ -5,7 +5,7 @@ from typing import cast
 import pandas as pd
 import yfinance as yf
 
-from src.database import load_sql
+from src.database.database import load_sql
 
 
 logger = logging.getLogger(__name__)

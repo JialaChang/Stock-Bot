@@ -5,7 +5,7 @@ import pytz
 import logging
 from datetime import datetime, timedelta
 
-from src.database import connect_db, load_sql
+from src.database.database import connect_db, load_sql
 
 
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)

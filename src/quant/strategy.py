@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from pandas import DataFrame
 
-from src.models import Signal, Position, Side
+from src.models.trade import Signal, Position, Side
 from src.quant.rule import (BollingerBand, Decay, EMACross, MACDSignalCross, MACDZeroLine,
                             RSIReversal, Rule, SMATrend, StochCross)
 
@@ -79,6 +79,7 @@ class EMAStrategy(Strategy):
 
 
 RuleSpec = Rule | tuple[Rule, float]  # A rule, or one carrying a weight other than 1.0
+
 
 class CompositeStrategy(Strategy):
     """Rules combined by role:

@@ -69,10 +69,19 @@ def html_document(title: str, body: str, *, subtitle: str | None = None) -> str:
 
 
 def write_report(html_text: str, name: str) -> str:
-    """Write a report to ``exports/<name>_<timestamp>.html`` and return the path."""
+    """Write a report to ``exports/<name>_<timestamp>.html`` and return the path.
+
+    A name already taken within the same second gets a ``_2``, ``_3`` ... suffix.
+    """
     stem = _UNSAFE_IN_FILENAME.sub('_', name).lstrip('.') or 'report'
     os.makedirs(_EXPORT_DIR, exist_ok=True)
-    filepath = os.path.join(_EXPORT_DIR, f'{stem}_{datetime.now():%Y%m%d_%H%M%S}.html')
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(html_text)
-    return filepath
+    base = os.path.join(_EXPORT_DIR, f'{stem}_{datetime.now():%Y%m%d_%H%M%S}')
+    filepath, n = f'{base}.html', 1
+    while True:
+        try:
+            with open(filepath, 'x', encoding='utf-8') as f:  # 'x' fails rather than overwrite
+                f.write(html_text)
+            return filepath
+        except FileExistsError:
+            n += 1
+            filepath = f'{base}_{n}.html'

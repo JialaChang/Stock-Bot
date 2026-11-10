@@ -1,9 +1,10 @@
 """The report layer escapes on behalf of its callers, so no caller writes entities by hand."""
 import os
+from datetime import datetime
 
 import pytest
 
-from src.utils.html_report import fmt_int, fmt_num, html_document, html_table, write_report
+from src.utils.html_page import fmt_int, fmt_num, html_document, html_table, write_report
 
 
 class TestEscaping:
@@ -36,7 +37,7 @@ class TestEscaping:
 
 class TestWriteReport:
     def test_writes_into_exports(self, tmp_path, monkeypatch):
-        monkeypatch.setattr('src.utils.html_report._EXPORT_DIR', str(tmp_path))
+        monkeypatch.setattr('src.utils.html_page._EXPORT_DIR', str(tmp_path))
         path = write_report('<p>x</p>', '2330.TW_prices')
         assert os.path.dirname(path) == str(tmp_path)
         assert os.path.basename(path).startswith('2330.TW_prices_')
@@ -44,9 +45,24 @@ class TestWriteReport:
 
     @pytest.mark.parametrize("name", ['../../etc/passwd', '/abs/path', '..', 'a/b\\c'])
     def test_a_hostile_name_cannot_escape_exports(self, tmp_path, monkeypatch, name):
-        monkeypatch.setattr('src.utils.html_report._EXPORT_DIR', str(tmp_path))
+        monkeypatch.setattr('src.utils.html_page._EXPORT_DIR', str(tmp_path))
         path = write_report('<p>x</p>', name)
         assert os.path.dirname(os.path.abspath(path)) == str(tmp_path)
+
+    def test_the_same_name_in_the_same_second_gets_a_new_file(self, tmp_path, monkeypatch):
+        class FrozenClock(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 1, 2, 3, 4, 5)
+        monkeypatch.setattr('src.utils.html_page._EXPORT_DIR', str(tmp_path))
+        monkeypatch.setattr('src.utils.html_page.datetime', FrozenClock)
+
+        paths = [write_report(f'<p>{i}</p>', 'X_backtest') for i in range(3)]
+
+        assert [os.path.basename(p) for p in paths] == [
+            'X_backtest_20260102_030405.html', 'X_backtest_20260102_030405_2.html',
+            'X_backtest_20260102_030405_3.html']
+        assert [open(p, encoding='utf-8').read() for p in paths] == ['<p>0</p>', '<p>1</p>', '<p>2</p>']
 
 
 class TestFormatting:

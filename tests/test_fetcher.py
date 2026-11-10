@@ -1,9 +1,9 @@
 import sqlite3
 import pytest
 
-from src.data import StockDataFetcher
+from src.data.fetcher import StockDataFetcher
 from src.database import database as database_module
-from src.database import load_sql
+from src.database.database import load_sql
 
 
 STOCKS = [('SPCX', 'SpaceX', 'US'), ('2330.TW', 'TSMC', 'TW'), ('5274.TWO', 'Aspeed', 'TW'),

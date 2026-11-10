@@ -229,16 +229,12 @@ classDiagram
         +list~float~ equity
         +required_history_days(period_days) int
         +run(ticker, data, start) BacktestResult
-        +export_backtest_result_html(result) str
     }
 
     class InsufficientDataError {
         <<Exception: quant/errors>>
     }
 
-    class html_report {
-        <<見「Bot 與輸出工具」圖>>
-    }
     class Rule {
         <<見「規則層」圖>>
     }
@@ -269,7 +265,6 @@ classDiagram
     BacktestEngine --> Strategy : 持有
     BacktestEngine --> indicator : 計算指標
     BacktestEngine --> backtest_module : 讀取常數 / 切歷史區間
-    BacktestEngine --> html_report : 匯出報表
     BacktestEngine ..> Position : 追蹤
     BacktestEngine ..> Trade : 產生
     BacktestEngine ..> BacktestResult : 回傳
@@ -280,7 +275,7 @@ classDiagram
 
 ## 4. Bot 與輸出工具 (`src/bot/`、`src/utils/`)
 
-`html_report` 和 Discord 無關，使用它的是 `BacktestEngine` 與 `database`；放在這張圖只是因為它也在 `src/utils/`。
+`reports` 與 `html_page` 和 Discord 無關，使用者是終端工具；放在這張圖只是因為它們也在 `src/utils/`。
 
 ```mermaid
 classDiagram
@@ -298,7 +293,6 @@ classDiagram
     class dc_bot_view {
         <<Module: bot/dc_bot_view>>
         +display_name(name, ticker) str
-        +build_snapshot(ticker, name, history_data, intraday_data, latest_time) StockSnapshot
         +send_stock_response(interaction, snapshot, history_bytes, intraday_bytes)
         +send_backtest_response(interaction, result, stock_name, strategy_label, chart_bytes)
     }
@@ -319,8 +313,8 @@ classDiagram
         +generate_backtest_chart(ticker, result) BytesIO
     }
 
-    class html_report {
-        <<Module: utils/html_report>>
+    class html_page {
+        <<Module: utils/html_page>>
         +html_document(title, body, subtitle) str
         +html_table(headers, rows) str
         +fmt_num(v, decimals) str
@@ -328,7 +322,19 @@ classDiagram
         +write_report(html_text, name) str
     }
 
+    class reports {
+        <<Module: utils/reports>>
+        +change_class(value) str
+        +price_change_classes(prices) list
+        +summary_rows(result) list
+        +export_backtest_html(result, strategy_label) str
+        +export_prices_html(ticker, prices) str
+    }
+
     class StockDataFetcher {
+        <<見「資料存取與排程腳本」圖>>
+    }
+    class snapshot {
         <<見「資料存取與排程腳本」圖>>
     }
     class strategy_module {
@@ -340,9 +346,6 @@ classDiagram
     class BacktestEngine {
         <<見「技術分析與回測引擎」圖>>
     }
-    class InsufficientDataError {
-        <<見「技術分析與回測引擎」圖>>
-    }
     class StockSnapshot {
         <<見「資料模型」圖>>
     }
@@ -350,23 +353,25 @@ classDiagram
         <<見「資料模型」圖>>
     }
 
-    dc_bot --> StockDataFetcher : 實例化
+    dc_bot --> StockDataFetcher : 實例化（回測）
+    dc_bot --> snapshot : load_stock()
     dc_bot --> visualizer : 繪製圖表
     visualizer --> indicator : 計算均線
-    dc_bot --> dc_bot_view : 組裝快照 / 送出回覆
+    dc_bot --> dc_bot_view : 送出回覆
     dc_bot --> BacktestEngine : 執行回測
     dc_bot --> strategy_module : STRATEGIES 對照表
     dc_bot_view --> ChartToggleView : 實例化
-    dc_bot_view ..> StockSnapshot : 組裝與回傳
+    dc_bot_view ..> StockSnapshot : 讀取
     dc_bot_view ..> BacktestResult : 讀取
-    dc_bot_view ..> InsufficientDataError : 拋出
+    reports --> html_page : 組頁面 / 寫檔
+    reports ..> BacktestResult : 讀取
 ```
 
-`visualizer` 在資料副本上用 `indicator` 計算均線，不會改到呼叫端的資料；Embed 需要的 RSI 則由 `build_snapshot` 自己計算。
+`visualizer` 在資料副本上用 `indicator` 計算均線，不會改到呼叫端的資料；Embed 需要的 RSI 則由 `snapshot.build_snapshot` 自己計算。
 
 ## 5. HTTP API (`src/api/`)
 
-`routes` 直接使用 `dc_bot_view.build_snapshot`，因此依賴 `bot`；API 和 Bot 共用同一套快照組裝邏輯。
+`routes` 與 Bot 共用 `snapshot.load_stock`，不依賴 `bot`。
 
 ```mermaid
 classDiagram
@@ -394,22 +399,22 @@ classDiagram
         +float change_percent
     }
 
-    class StockDataFetcher {
+    class snapshot {
         <<見「資料存取與排程腳本」圖>>
-    }
-    class dc_bot_view {
-        <<見「Bot 與輸出工具」圖>>
     }
     class InsufficientDataError {
         <<見「技術分析與回測引擎」圖>>
+    }
+    class NoHistoryError {
+        <<見「資料存取與排程腳本」圖>>
     }
     class StockSnapshot {
         <<見「資料模型」圖>>
     }
 
     main --> routes : 掛載路由
-    routes --> StockDataFetcher : 實例化
-    routes --> dc_bot_view : 組裝快照
+    routes --> snapshot : load_stock()
+    routes ..> NoHistoryError : 捕捉並轉為 404
     routes ..> StockSnapshot : 讀取
     routes ..> SnapshotResponse : 轉換與回傳
     routes ..> InsufficientDataError : 捕捉並轉為 422
@@ -466,12 +471,7 @@ classDiagram
         UNIQUE ticker + date
     }
 
-    class html_report {
-        <<見「Bot 與輸出工具」圖>>
-    }
-
     database --> sql_files : 載入
-    database --> html_report : 匯出價格報表
     database ..> stocks : CRUD
     database ..> daily_prices : CRUD
     daily_prices --> stocks : FK (ticker)
@@ -479,7 +479,7 @@ classDiagram
 
 ## 7. 資料存取與排程腳本 (`src/data/`、`scripts/`)
 
-`fetcher` 負責讀取，`sync` 負責寫入行情。兩支回補腳本透過 `sync` 寫入，`seed_stocks` 則直接寫入股票清單。
+`fetcher` 負責讀取，`snapshot` 在它之上組出 Bot 與 API 共用的快照，`sync` 負責寫入行情。兩支回補腳本透過 `sync` 寫入，`seed_stocks` 則直接寫入股票清單。
 
 ```mermaid
 classDiagram
@@ -496,6 +496,17 @@ classDiagram
         +latest_time() Timestamp
         +get_data_range() dict
         -_format_ticker(ticker) str
+    }
+
+    class snapshot {
+        <<Module: data/snapshot>>
+        +load_stock(ticker) tuple
+        +build_snapshot(ticker, name, history_data, intraday_data, latest_time) StockSnapshot
+    }
+
+    class NoHistoryError {
+        <<Exception>>
+        +str ticker
     }
 
     class sync {
@@ -542,7 +553,17 @@ classDiagram
     class daily_prices {
         <<見「儲存層」圖>>
     }
+    class StockSnapshot {
+        <<見「資料模型」圖>>
+    }
+    class InsufficientDataError {
+        <<見「技術分析與回測引擎」圖>>
+    }
 
+    snapshot --> StockDataFetcher : 實例化
+    snapshot ..> StockSnapshot : 組裝與回傳
+    snapshot ..> NoHistoryError : 拋出
+    snapshot ..> InsufficientDataError : 拋出
     StockDataFetcher --> database : connect_db() / load_sql()
     StockDataFetcher --> twstock : 台股市場別對照
     StockDataFetcher --> yfinance : 盤中資料

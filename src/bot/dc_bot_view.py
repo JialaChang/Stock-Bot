@@ -2,13 +2,9 @@ import discord
 from discord.ui import Button, View
 import io
 import logging
-from datetime import datetime
 
-import pandas as pd
-import pandas_ta as pta
-
-from src.models import StockSnapshot, BacktestResult
-from src.quant import InsufficientDataError
+from src.models.stock import StockSnapshot
+from src.models.trade import BacktestResult
 
 
 logger = logging.getLogger(__name__)
@@ -22,48 +18,6 @@ def display_name(name: str, ticker: str) -> str:
 def _change_color(value: float) -> int:
     """Red for up, green for down, grey for flat (TW convention)."""
     return 0xe74c3c if value > 0 else 0x2ecc71 if value < 0 else 0x676767
-
-
-def build_snapshot(ticker: str, name: str, history_data: pd.DataFrame,
-                   intraday_data: pd.DataFrame, latest_time: datetime) -> StockSnapshot:
-    """Assemble what the `/stock` Embed shows.
-
-    RSI is computed locally rather than via `compute_indicators`, which would write
-    into frames the chart layer still uses.
-    """
-    if len(history_data) < 2:
-        raise InsufficientDataError(f"'{ticker}' has fewer than two historical rows and cannot be processed...")
-
-    prices = history_data['Close']
-    rsi = pta.rsi(prices, length=14)  # pyright: ignore[reportPrivateImportUsage, reportCallIssue]
-
-    # Intraday if it traded today, else the last close
-    if not intraday_data.empty:
-        curr_price = intraday_data['Close'].iloc[-1]
-        curr_date = pd.to_datetime(intraday_data.index[-1]).date()
-    else:
-        curr_price = prices.iloc[-1]
-        curr_date = pd.to_datetime(history_data.index[-1]).date()
-
-    # The latest close strictly before today: the baseline for the change %
-    past_data = history_data[pd.to_datetime(history_data.index).date < curr_date]
-    prev_price = float(past_data['Close'].iloc[-1] if not past_data.empty else prices.iloc[-2])
-
-    def last(series: pd.Series | None) -> float | None:
-        """Latest value of a series, or None."""
-        if series is None or series.empty:
-            return None
-        val = series.iloc[-1]
-        return float(val) if pd.notna(val) else None
-
-    return StockSnapshot(
-        ticker=ticker,
-        name=name,
-        current_price=float(curr_price),
-        previous_close=prev_price,
-        rsi_value=last(rsi),
-        latest_time=latest_time
-    )
 
 
 class ChartToggleView(View):

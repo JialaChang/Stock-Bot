@@ -2,7 +2,7 @@
 import time
 import logging
 
-from src.database import connect_db
+from src.database.database import connect_db
 from src.data.sync import download_ohlcv, extract_ticker_frame, records_from_frame, upsert_records, fetch_all_tickers, fetch_pending_tickers, mark_backfilled
 
 
@@ -65,6 +65,7 @@ def backfill_history(period: int, tickers: list[str] | None = None, force: bool 
 
     except Exception as e:
         logger.error(f"Historical backfill failed: {e}")
+
 
 if __name__ == "__main__":
     backfill_history(BACKFILL_YEARS)

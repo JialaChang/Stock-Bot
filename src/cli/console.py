@@ -5,6 +5,8 @@ import click
 from rich.console import Console
 from rich.text import Text
 
+from src.utils.reports import change_class
+
 
 console = Console()
 
@@ -13,7 +15,15 @@ CHANGE_STYLES = {'up': 'bold red', 'down': 'bold green', 'flat': 'dim'}
 
 
 def signed_style(value: float) -> str:
-    return CHANGE_STYLES['up' if value > 0 else 'down' if value < 0 else 'flat']
+    return CHANGE_STYLES[change_class(value)]
+
+
+def success(message: str) -> None:
+    console.print(message, style="green", markup=False)
+
+
+def warn(message: str) -> None:
+    console.print(message, style="yellow", markup=False)
 
 
 def ask(prompt: str) -> str:
@@ -21,7 +31,8 @@ def ask(prompt: str) -> str:
 
 
 def choose(prompt: str, options: dict[str, str], show_options: bool = True) -> str:
-    """Pick an option with a single keypress and return its key.\n
+    """Pick an option with a single keypress and return its key.
+
     Falls back to a typed line when stdin is not a terminal (pipes, tests).
     """
     if show_options:
@@ -50,18 +61,10 @@ def _option_label(key: str, label: str) -> str:
     return f"[{key}] {label}"
 
 
-def run_interactive(main: Callable[[], None]) -> None:
+def run_interactive(tool: Callable[[], None]) -> None:
     """Run an interactive tool, leaving quietly on Ctrl+C / Ctrl+D."""
     try:
-        main()
+        tool()
     except (KeyboardInterrupt, EOFError):
         console.print()
     console.print("Goodbye!")
-
-
-def success(message: str) -> None:
-    console.print(message, style="green", markup=False)
-
-
-def warn(message: str) -> None:
-    console.print(message, style="yellow", markup=False)

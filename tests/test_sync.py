@@ -5,7 +5,7 @@ import pytest
 from src.data.sync import (TIMESTAMP_FORMAT, extract_ticker_frame, fetch_all_tickers,
                            fetch_pending_tickers, mark_backfilled, needs_full_refresh,
                            records_from_frame, upsert_records)
-from src.database import load_sql
+from src.database.database import load_sql
 
 
 DATES = ['2026-01-02', '2026-01-05', '2026-01-06']

@@ -32,7 +32,7 @@ stock-bot/
 │   ├── api/          # HTTP API：路由與回應模型
 │   ├── bot/          # Discord 斜線指令與 UI 元件
 │   ├── cli/          # 終端互動工具：回測與資料庫管理
-│   ├── data/         # 讀取資料（fetcher）與寫入資料（sync）
+│   ├── data/         # 讀取（fetcher）、組快照（snapshot）與寫入（sync）
 │   ├── quant/        # 技術指標、規則、策略與回測引擎
 │   ├── database/     # 資料庫初始化與 CRUD（SQL 放在 sql/*.sql）
 │   ├── models/       # 共用資料類別
@@ -47,7 +47,7 @@ stock-bot/
 └── main.py           # 全域 logging 設定
 ```
 
-模組職責與指令資料流請見 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)，模組相依關係請見 [docs/UML.md](./docs/UML.md)。
+模組職責與設計決策請見 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)，模組相依關係請見 [docs/UML.md](./docs/UML.md)。
 
 ---
 
